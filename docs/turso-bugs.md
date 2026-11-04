@@ -157,6 +157,66 @@ with a relative tolerance.
 Issue: https://github.com/tursodatabase/turso/issues/11388.
 Related: https://github.com/tursodatabase/turso/issues/9605 covers `sum()` and `avg()` of `numeric(p,s)` columns.
 
+## 7. Crash: extension aggregate in a WHERE clause
+
+An extension aggregate (`percentile_cont`, `median`, `stddev`) in a
+WHERE clause panics. A built-in aggregate in the same place gives an
+error. The planner does not reject the extension aggregate, so the
+program calls it as a scalar function.
+
+```sql
+CREATE TABLE t (a INTEGER);
+INSERT INTO t VALUES (1);
+SELECT a FROM t WHERE median(a) = 1;
+```
+
+```text
+thread 'main' panicked at core/ext/function.rs:91:18:
+internal error: entered unreachable code: aggregate called in scalar context
+```
+
+The panic is in `ExtFunc::call_scalar`, called from `op_function`.
+`SELECT a FROM t WHERE sum(a) = 1` gives `misuse of aggregate function sum()`.
+`SELECT 1 WHERE percentile_cont(0.5, 1) = 1` panics too, so a table is
+not necessary.
+
+Expected PostgreSQL behavior: the error `aggregate functions are not
+allowed in WHERE`.
+
+This is not finding 1. Finding 1 is a slice index panic in
+`ExtFunc::step_aggregate` with GROUP BY.
+
+Found by: the NoREC oracle, 12-hour campaign. AFL++ saved it as a crash
+after 88 seconds (`SELECT count(*) FROM v0 WHERE c1 @> percentile_cont(c2, c1)`).
+
+## 8. ON CONFLICT DO UPDATE SET is not checked on a table without an index
+
+An unknown column in the SET list of `ON CONFLICT DO UPDATE` gives an
+error only when the table has an index. On a table without an index,
+the statement inserts the row. Thus a `CREATE INDEX` changes whether
+an insert succeeds.
+
+```sql
+CREATE TABLE t (a INTEGER, b INTEGER);
+INSERT INTO t VALUES (6, 7) ON CONFLICT DO UPDATE SET nosuch = t.a;   -- tursopg: inserts the row
+SELECT count(*) FROM t;                                               -- tursopg: 1
+CREATE TABLE u (a INTEGER, b INTEGER);
+CREATE INDEX ub ON u (b);
+INSERT INTO u VALUES (6, 7) ON CONFLICT DO UPDATE SET nosuch = u.a;   -- tursopg: ERROR:  no such column: nosuch
+SELECT count(*) FROM u;                                               -- tursopg: 0
+```
+
+A table with a primary key gives the error too. tursopg also accepts
+`ON CONFLICT DO UPDATE` without a conflict target.
+
+Expected PostgreSQL behavior: both inserts fail. Without a conflict
+target, the error is `ON CONFLICT DO UPDATE requires inference
+specification or constraint name`. With a target, an unknown column
+gives `column "nosuch" of relation "t" does not exist`.
+
+Found by: the INDEX oracle, 12-hour campaign (the row counts of the run
+with indexes and the run without indexes were different).
+
 ## Campaign log
 
 tursopg at submodule commit ff97c22, 4 cores, one `afl-fuzz` instance per
