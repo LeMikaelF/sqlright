@@ -131,6 +131,21 @@ impl Tlp {
         default_type
     }
 
+    /// True when the single select target is one of the GROUP BY
+    /// expressions. A column that is neither grouped nor aggregated has an
+    /// arbitrary value per group (PostgreSQL rejects the query, tursopg
+    /// picks a row), so the partitioned form cannot be compared with it.
+    fn target_is_grouped(t: &IrTree, stmt: IrId) -> bool {
+        let Some(&target) = ir_wrapper::get_target_el_in_select_target(t, stmt).first() else {
+            return false;
+        };
+        let expr = t.left(target).unwrap_or(target);
+        let target_text = squeeze(&t.to_string(expr));
+        ir_wrapper::get_ir_node_in_stmt_with_type(t, stmt, IrType::GroupByItem, false)
+            .iter()
+            .any(|&item| squeeze(&t.to_string(item)) == target_text)
+    }
+
     /// The TLP type of every oracle SELECT in a marked test case.
     fn get_v_valid_type(cmd_str: &str) -> Vec<TlpType> {
         let mut out = Vec::new();
@@ -426,6 +441,11 @@ impl Tlp {
 }
 
 /// Count the rows of a result block, like the C++: newlines minus empty lines.
+/// The text without whitespace, for comparing two printed expressions.
+fn squeeze(text: &str) -> String {
+    text.chars().filter(|c| !c.is_whitespace()).collect()
+}
+
 fn count_non_empty(block: &str) -> i64 {
     let newlines = block.matches('\n').count() as i64;
     let empties = string_splitter(block, '\n')
@@ -481,6 +501,10 @@ impl Oracle for Tlp {
         if froms.is_empty()
             || wheres.is_empty()
             || ir_wrapper::get_num_target_el_in_select_clause(t, stmt) != 1
+        {
+            return false;
+        }
+        if Self::get_stmt_tlp_type(t, stmt) == TlpType::GroupBy && !Self::target_is_grouped(t, stmt)
         {
             return false;
         }
@@ -611,6 +635,16 @@ mod tests {
         };
         Tlp::compare_norm(&mut fewer_rows);
         assert_eq!(fewer_rows.comp_res, OraCompRes::Fail);
+    }
+
+    #[test]
+    fn rejects_a_grouped_select_whose_target_is_not_grouped() {
+        let mut q = parse_query("SELECT c6 FROM v4 WHERE c5 > 0 GROUP BY c5;").unwrap();
+        let stmt = ir_wrapper::get_first_stmt_from_root(&q.tree, q.root).unwrap();
+        assert!(!Tlp.is_oracle_select_stmt(&mut q.tree, stmt));
+        let mut q = parse_query("SELECT c5 FROM v4 WHERE c5 > 0 GROUP BY c5;").unwrap();
+        let stmt = ir_wrapper::get_first_stmt_from_root(&q.tree, q.root).unwrap();
+        assert!(Tlp.is_oracle_select_stmt(&mut q.tree, stmt));
     }
 
     #[test]

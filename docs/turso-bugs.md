@@ -102,3 +102,23 @@ value`; without the index the same query returns 0 rows.
 
 Found by: the NoREC oracle, round 3 (the only report of that round that
 was not a transaction-marker false positive).
+
+## 5. A column that is neither grouped nor aggregated is accepted with GROUP BY
+
+PostgreSQL rejects a select target that is not in the GROUP BY clause and
+not inside an aggregate (`column "v4.c6" must appear in the GROUP BY
+clause or be used in an aggregate function`). tursopg accepts it and
+returns the value of one row of the group, like SQLite does. Which row
+depends on the plan: the same query with a different WHERE clause gives
+another value for the same group.
+
+```sql
+CREATE TABLE v4 (c5 INT, c6 INT);
+INSERT INTO v4 VALUES (1, 10), (2, 20), (2, 30), (2, 40), (5, 50);
+SELECT c6 FROM v4 GROUP BY c5;                        -- tursopg: 10 20 50        PostgreSQL: error
+SELECT c6 FROM v4 WHERE NOT (c6 = 30) GROUP BY c5;    -- tursopg: 10 20 50
+SELECT c6 FROM v4 WHERE c6 = 30 GROUP BY c5;          -- tursopg: 30
+```
+
+Found by: the TLP oracle, round 4 (two reports). The TLP oracle now takes
+a grouped SELECT only when its target is one of the GROUP BY expressions.
