@@ -217,6 +217,49 @@ gives `column "nosuch" of relation "t" does not exist`.
 Found by: the INDEX oracle, 12-hour campaign (the row counts of the run
 with indexes and the run without indexes were different).
 
+## 9. A partial index with an invalid literal makes every insert fail
+
+tursopg accepts a partial index whose predicate compares a `numeric`
+column with a string that is not a number. Then every insert into the
+table fails. Without the index, the same insert succeeds.
+
+```sql
+CREATE TABLE t (c NUMERIC(10, 1));
+CREATE INDEX i ON t (c) WHERE c > 'x';     -- tursopg: accepted
+INSERT INTO t VALUES (1.2);                -- tursopg: ERROR:  invalid input syntax for type numeric: "x"
+SELECT count(*) FROM t;                    -- tursopg: 0 (1 without the index)
+```
+
+The same index on an `integer` column does not block the insert.
+
+Expected PostgreSQL behavior: `CREATE INDEX` fails with
+`invalid input syntax for type numeric: "x"`, because PostgreSQL converts
+the literal when it makes the index.
+
+Found by: the INDEX oracle, 12-hour campaign (one of three reports with
+the index rows `1.2` and `1.25`).
+
+## 10. A very large numeric scale makes an insert run for minutes
+
+tursopg accepts any precision and scale in `NUMERIC(p, s)`. An insert
+into such a column takes time that increases with the square of the scale.
+
+```sql
+CREATE TABLE t (c NUMERIC(852292321, 852292321));   -- tursopg: accepted
+INSERT INTO t VALUES (0.5);                          -- tursopg: does not stop in 60 seconds
+```
+
+Measured times for `INSERT INTO t VALUES (0.5)`: 2.0 seconds for a
+scale of 1,000,000, 7.4 seconds for 2,000,000 and 30 seconds for
+4,000,000. The harness has no time limit of its own, so AFL++ saves the
+test case as a hang.
+
+Expected PostgreSQL behavior: `CREATE TABLE` fails with
+`NUMERIC precision 852292321 must be between 1 and 1000`.
+
+Found by: the INDEX instance of the 12-hour campaign, as an AFL++ hang
+(`default/hangs/`).
+
 ## Campaign log
 
 tursopg at submodule commit ff97c22, 4 cores, one `afl-fuzz` instance per
