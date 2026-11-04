@@ -138,3 +138,21 @@ SELECT sum(c) / count(c) FROM t;  -- tursopg: -2773227799603160576
 Found by: the TLP oracle, round 5 (90 reports with the same two-way
 print of one value). The TLP aggregate comparison now compares numbers
 with a relative tolerance.
+
+## Campaign log
+
+tursopg at submodule commit ff97c22, 4 cores, one `afl-fuzz` instance per
+oracle. Seeds: the SQLRight PostgreSQL corpus and turso's `pg-sqltests`,
+filtered to statements tursopg accepts (`sqlright seeds --harness`). The
+mutation library is the same set.
+
+| Round | Oracle | Runs | Reports | What they were |
+|---|---|---|---|---|
+| 1 | NoREC | 10k | 813 | all `WHERE c1 << array_cat(...)`: finding 3 plus finding 2, through the `(pred)::INT` rewrite |
+| 1 | TLP | 16k | 244 | all window functions taken for aggregates (SQLRight bug) |
+| 2 | NoREC | 13k | 126 | all `count(*) FILTER (...)` (SQLRight bug) |
+| 2 | TLP | 11k | 0 | |
+| 3 | NoREC | 51k | 6 | 5 lost result markers after a failed statement in a transaction block (SQLRight bug), 1 real: finding 4 |
+| 3 | TLP | 13k | 0 | |
+| 4 | TLP | 14k | 2 | both a grouped SELECT with an ungrouped target: finding 5 |
+| 5 | TLP | 5k | 108 | all `avg(bigint)` printed as a double against an integer: finding 6 |
