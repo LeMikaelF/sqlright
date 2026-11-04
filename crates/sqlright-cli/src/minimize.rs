@@ -72,10 +72,10 @@ impl Minimizer<'_> {
             }
             let mut changed = false;
             for group in blocks.chunks(group_size).rev() {
-                let candidate: Runs = runs.iter().map(|r| remove_blocks(r, group)).collect();
+                let mut candidate: Runs = runs.iter().map(|r| remove_blocks(r, group)).collect();
+                renumber_blocks(&mut candidate);
                 if self.still_fails(&candidate)? {
                     *runs = candidate;
-                    renumber_blocks(runs);
                     changed = true;
                     break;
                 }

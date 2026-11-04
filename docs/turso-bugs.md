@@ -39,3 +39,37 @@ argument registers than `argc` in the grouped path.
 Found by: the AFL++ dry run on a seed from the PostgreSQL regression test
 `aggregates.sql` (the original statement is
 `select p, percentile_cont(p,p) from generate_series(1,5) x, (values (0::float8),(0.1),...) v(p) group by p order by p;`).
+
+## 2. WHERE accepts a non-boolean expression
+
+PostgreSQL rejects a WHERE expression that is not boolean
+(`argument of WHERE must be type boolean, not type integer`). tursopg
+accepts it and treats the value like SQLite does: zero and NULL are false,
+everything else is true.
+
+```sql
+CREATE TABLE t (c1 INT);
+INSERT INTO t VALUES (1), (2), (3), (0), (NULL);
+SELECT count(*) FROM t WHERE c1;      -- tursopg: 3      PostgreSQL: error
+SELECT count(*) FROM t WHERE 2.5;     -- tursopg: 5      PostgreSQL: error
+SELECT count(*) FROM t WHERE 'abc';   -- tursopg: 0      PostgreSQL: error
+SELECT NOT 5, CASE WHEN 5 THEN 'yes' ELSE 'no' END;   -- tursopg: 0 yes   PostgreSQL: error
+```
+
+Found by: the NoREC oracle. The first campaign reported this more than 800
+times because one library statement had the predicate below (bug 3), and
+`SUM((pred)::INT)` summed the integer values while `WHERE pred` counted
+the rows. The NoREC rewrite now uses `CASE WHEN`, so the oracle no longer
+depends on strict boolean typing.
+
+## 3. Bit shift with an array operand is accepted
+
+PostgreSQL has no `integer << integer[]` operator. tursopg evaluates it
+and returns the left operand, as if the array were 0.
+
+```sql
+SELECT 5 << ARRAY[1, 2];                                        -- tursopg: 5   PostgreSQL: error
+SELECT 5 << array_cat(ARRAY[[2, 4], [4, 10]], ARRAY[1, 2]);     -- tursopg: 5   PostgreSQL: error
+```
+
+Found by: the NoREC oracle (see bug 2).

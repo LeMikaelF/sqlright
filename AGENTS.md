@@ -168,6 +168,13 @@ purpose:
   the string lost its quotes and the statement did not parse).
 - `post_fix_transform` keeps the statement types aligned for multi-run
   oracles (the C++ indexed the type list with the wrong index).
+- The NoREC rewrite counts with `CASE WHEN (pred) THEN 1 ELSE 0 END`
+  instead of `(pred)::INT`. On a database that accepts a non-boolean WHERE
+  expression (tursopg does), the cast sums the expression values while
+  `WHERE pred` counts rows, which gave hundreds of false failures.
+- The TLP oracle does not take a SELECT with a window clause: the C++ took
+  `avg(c1) OVER (...)` for an aggregate and compared one row per input row
+  with one aggregated value.
 - The output of the harness has a first line with the hash of the input.
   The oracle only compares output that belongs to the test case it sent.
 - The harness prints `ERROR:  <message>` for a failed statement, like the
