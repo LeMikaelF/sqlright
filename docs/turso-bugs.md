@@ -176,3 +176,8 @@ mutation library is the same set.
 | 5 | TLP | 5k | 108 | all `avg(bigint)` printed as a double against an integer: finding 6 |
 | 4 | NoREC | 161k | 0 | 108,809 test cases, 96,545 comparable pairs, no failure (60 min, seeds without transaction statements, harness prints the markers) |
 | 6 | TLP | 65k | 0 | 25,130 test cases, 20,365 comparable pairs, no failure (50 min) |
+| 1 | INDEX | 52k | 0 | 23,199 multi-run test cases, 19,976 comparable blocks, no failure, no crash, no hang (120 min) |
+
+The INDEX oracle ran once for two hours with the first harness build. The
+NoREC and TLP rounds after the first used the harness that prints the
+result markers itself and the seeds without transaction statements.
