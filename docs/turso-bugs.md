@@ -73,3 +73,32 @@ SELECT 5 << array_cat(ARRAY[[2, 4], [4, 10]], ARRAY[1, 2]);     -- tursopg: 5   
 ```
 
 Found by: the NoREC oracle (see bug 2).
+
+## 4. Index lookup and expression disagree on a `date` primary key
+
+An integer inserted into a `date` column is stored as the date of that
+Julian day. After that, `WHERE c1 = 0` finds the row through the primary
+key index, but the same comparison is false when it is evaluated as an
+expression. Without the index the count is 0.
+
+```sql
+CREATE TABLE v0 (c1 date PRIMARY KEY);
+INSERT INTO v0 VALUES (0);
+SELECT c1, c1 = 0 FROM v0;             -- -4713-11-24 0      (the comparison is false)
+SELECT count(*) FROM v0 WHERE c1 = 0;  -- 1                  (the index finds the row)
+CREATE TABLE v1 (c1 date);
+INSERT INTO v1 VALUES (0);
+SELECT count(*) FROM v1 WHERE c1 = 0;  -- 0                  (no index: consistent with the expression)
+```
+
+The same happens with a `UNIQUE` index instead of the primary key. With a
+valid date (`INSERT INTO v0 VALUES ('2024-01-02')`) both forms agree.
+PostgreSQL rejects the insert (`column "c1" is of type date but expression
+is of type integer`), so the first problem is the accepted insert; given
+the accepted row, the index and the expression must still agree.
+
+Related: with the index, `WHERE c1 = 'abc'` fails with `invalid date
+value`; without the index the same query returns 0 rows.
+
+Found by: the NoREC oracle, round 3 (the only report of that round that
+was not a transaction-marker false positive).
