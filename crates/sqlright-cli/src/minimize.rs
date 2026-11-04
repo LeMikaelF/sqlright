@@ -85,7 +85,9 @@ impl Minimizer<'_> {
     }
 
     /// Remove whole oracle groups (a pair of result blocks for NOREC and
-    /// TLP, one block for INDEX) while the case still fails.
+    /// TLP, one block for INDEX) while the case still fails. The blocks of
+    /// a pair are numbered 0 and 1 in every pair, so a block is identified
+    /// by its position, not by its number.
     fn remove_oracle_groups(&mut self, runs: &mut Runs) -> Result<()> {
         let group_size = if self.engine.oracle.mul_run_num() > 1 {
             1
@@ -93,14 +95,19 @@ impl Minimizer<'_> {
             2
         };
         loop {
-            let blocks = block_numbers(&runs[0]);
-            if blocks.len() <= group_size {
+            let block_count = block_spans(&runs[0]).len();
+            if block_count <= group_size {
                 return Ok(());
             }
             let mut changed = false;
-            for group in blocks.chunks(group_size).rev() {
-                let mut candidate: Runs = runs.iter().map(|r| remove_blocks(r, group)).collect();
-                renumber_blocks(&mut candidate);
+            let group_count = block_count.div_ceil(group_size);
+            for group in (0..group_count).rev() {
+                let ordinals: Vec<usize> =
+                    (group * group_size..((group + 1) * group_size).min(block_count)).collect();
+                let candidate: Runs = runs
+                    .iter()
+                    .map(|r| remove_blocks_by_ordinal(r, &ordinals))
+                    .collect();
                 if self.still_fails(&candidate)? {
                     *runs = candidate;
                     changed = true;
@@ -272,52 +279,41 @@ fn marker(stmt: &str) -> Option<(bool, usize)> {
     digits.parse().ok().map(|n| (begin, n))
 }
 
-/// The block numbers of a run, in order.
-fn block_numbers(run: &[String]) -> Vec<usize> {
-    run.iter()
-        .filter_map(|s| marker(s))
-        .filter(|(begin, _)| *begin)
-        .map(|(_, n)| n)
-        .collect()
-}
-
-/// The run without the blocks with these numbers (markers included).
-fn remove_blocks(run: &[String], numbers: &[usize]) -> Vec<String> {
-    let mut out = Vec::new();
-    let mut skipping = false;
-    for s in run {
+/// The result blocks of a run: the statement index of each `BEGIN VERI`
+/// marker and of its `END VERI` marker.
+fn block_spans(run: &[String]) -> Vec<(usize, usize)> {
+    let mut spans = Vec::new();
+    let mut start = None;
+    for (i, s) in run.iter().enumerate() {
         match marker(s) {
-            Some((true, n)) if numbers.contains(&n) => skipping = true,
-            Some((false, n)) if numbers.contains(&n) => {
-                skipping = false;
-                continue;
-            }
-            _ => {}
-        }
-        if !skipping {
-            out.push(s.clone());
-        }
-    }
-    out
-}
-
-/// Number the remaining blocks 0, 1, 2, ... in every run.
-fn renumber_blocks(runs: &mut Runs) {
-    let mut old_numbers = block_numbers(&runs[0]);
-    old_numbers.sort_unstable();
-    old_numbers.dedup();
-    for run in runs.iter_mut() {
-        for s in run.iter_mut() {
-            if let Some((begin, n)) = marker(s) {
-                if let Some(new) = old_numbers.iter().position(|&o| o == n) {
-                    *s = format!(
-                        "SELECT '{} VERI {new}'",
-                        if begin { "BEGIN" } else { "END" }
-                    );
+            Some((true, _)) => start = Some(i),
+            Some((false, _)) => {
+                if let Some(b) = start.take() {
+                    spans.push((b, i));
                 }
             }
+            None => {}
         }
     }
+    spans
+}
+
+/// The run without the blocks at these positions (markers included).
+fn remove_blocks_by_ordinal(run: &[String], ordinals: &[usize]) -> Vec<String> {
+    let spans = block_spans(run);
+    let mut drop = vec![false; run.len()];
+    for &o in ordinals {
+        if let Some(&(b, e)) = spans.get(o) {
+            for d in drop.iter_mut().take(e + 1).skip(b) {
+                *d = true;
+            }
+        }
+    }
+    run.iter()
+        .zip(drop)
+        .filter(|(_, d)| !*d)
+        .map(|(s, _)| s.clone())
+        .collect()
 }
 
 /// The indexes of the statements that are not in a result block.
@@ -349,7 +345,7 @@ mod tests {
     use super::*;
 
     #[test]
-    fn finds_and_renumbers_result_blocks() {
+    fn finds_and_removes_result_blocks_by_position() {
         let run: Vec<String> = [
             "CREATE TABLE v0 (c1 INT)",
             "SELECT 'BEGIN VERI 0'",
@@ -358,22 +354,21 @@ mod tests {
             "SELECT 'BEGIN VERI 1'",
             "SELECT 2",
             "SELECT 'END VERI 1'",
-            "SELECT 'BEGIN VERI 2'",
+            "SELECT 'BEGIN VERI 0'",
             "SELECT 3",
-            "SELECT 'END VERI 2'",
-            "SELECT 'BEGIN VERI 3'",
+            "SELECT 'END VERI 0'",
+            "SELECT 'BEGIN VERI 1'",
             "SELECT 4",
-            "SELECT 'END VERI 3'",
+            "SELECT 'END VERI 1'",
         ]
         .iter()
         .map(|s| s.to_string())
         .collect();
-        assert_eq!(block_numbers(&run), vec![0, 1, 2, 3]);
+        assert_eq!(block_spans(&run), vec![(1, 3), (4, 6), (7, 9), (10, 12)]);
         assert_eq!(free_statement_indexes(&run), vec![0]);
-        let mut runs = vec![remove_blocks(&run, &[0, 1])];
-        renumber_blocks(&mut runs);
+        let smaller = remove_blocks_by_ordinal(&run, &[0, 1]);
         assert_eq!(
-            runs[0],
+            smaller,
             vec![
                 "CREATE TABLE v0 (c1 INT)",
                 "SELECT 'BEGIN VERI 0'",
