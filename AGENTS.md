@@ -96,8 +96,17 @@ mutations of SQL text only make statements that do not parse.
 cargo build --release                 # the workspace: libsqlright_afl.so and the sqlright command
 cargo install cargo-afl               # once
 cargo afl config --build              # once: builds AFL++ for the pinned toolchain
-cd crates/sqlright-harness-tursopg && cargo afl build --release
+cd crates/sqlright-harness-tursopg && RUSTFLAGS="-C target-cpu=x86-64-v3" cargo afl build --release
 ```
+
+`cargo afl build` compiles for the CPU of the build machine
+(`-C target-cpu=native`). A container can restart on a machine with a
+different CPU. Then the harness stops with an illegal instruction
+(SIGILL) on every input, afl-fuzz saves inputs as crashes and sees no
+coverage. The `RUSTFLAGS` value comes after the cargo-afl flags, so it
+replaces `native` with a common x86-64 level. `sqlright run` runs the
+harness on `SELECT 1` before it starts afl-fuzz and stops if the harness
+fails.
 
 The harness is a separate workspace because it links turso from the
 submodule, and because `cargo afl build` instruments every crate it
