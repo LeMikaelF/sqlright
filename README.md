@@ -45,7 +45,10 @@ target/release/sqlright minimize work/norec/bugs/bug_NOREC_<hash>.sql --oracle N
 
 `replay` runs the test case on the harness and prints the oracle verdict.
 `minimize` removes oracle pairs, statements and parts of statements while
-the oracle still fails.
+the oracle still fails. `scripts/triage.sh <out-dir> <oracle>` minimizes
+every report of a campaign, and `scripts/group_failures.py` groups the
+failing pairs of many reports by the shape of their SELECT, which shows
+when one cause is behind all of them.
 
 ## Commands
 
