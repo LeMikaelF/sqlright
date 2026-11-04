@@ -4,6 +4,17 @@ version.workspace = true
 edition.workspace = true
 license.workspace = true
 repository.workspace = true
-description = "SQLRight: cli"
+description = "The sqlright command: inspect, mutate, replay, minimize, build seeds, and start afl-fuzz"
+
+[[bin]]
+name = "sqlright"
+path = "src/main.rs"
 
 [dependencies]
+sqlright-ir = { workspace = true }
+sqlright-pg-parser = { workspace = true }
+sqlright-mutator = { workspace = true }
+sqlright-oracle = { workspace = true }
+sqlright-afl = { path = "../sqlright-afl" }
+anyhow = { workspace = true }
+clap = { workspace = true }

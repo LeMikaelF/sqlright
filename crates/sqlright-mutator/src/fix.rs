@@ -694,7 +694,11 @@ impl Mutator {
                     ColType::String => {
                         if !self.ctx.v_string_literals.is_empty() && self.rng.rand_int(10) < 9 {
                             let s = self.ctx.v_string_literals[self.rng.rand_int(self.ctx.v_string_literals.len())].clone();
-                            t.set_str_val(id, s);
+                            // The C++ kept the old node type here, so an int
+                            // literal became an unquoted word.
+                            let n = t.get_mut(id);
+                            n.str_val = s;
+                            n.ty = IrType::StringLiteral;
                             continue;
                         }
                         let s = self.get_a_string();
