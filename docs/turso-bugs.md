@@ -156,3 +156,5 @@ mutation library is the same set.
 | 3 | TLP | 13k | 0 | |
 | 4 | TLP | 14k | 2 | both a grouped SELECT with an ungrouped target: finding 5 |
 | 5 | TLP | 5k | 108 | all `avg(bigint)` printed as a double against an integer: finding 6 |
+| 4 | NoREC | 161k | 0 | 108,809 test cases, 96,545 comparable pairs, no failure (60 min, seeds without transaction statements, harness prints the markers) |
+| 6 | TLP | 65k | 0 | 25,130 test cases, 20,365 comparable pairs, no failure (50 min) |
