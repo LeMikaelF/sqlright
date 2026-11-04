@@ -271,7 +271,17 @@ impl Tlp {
             res.comp_res = OraCompRes::Pass;
             return false;
         }
-        res.comp_res = if a != b { OraCompRes::Fail } else { OraCompRes::Pass };
+        if a != b {
+            res.comp_res = OraCompRes::Fail;
+            return false;
+        }
+        // The C++ stopped at the row counts. The rows themselves must also
+        // be the same multiset.
+        let mut rows_a: Vec<&str> = v_a.iter().map(|r| r.trim_end()).filter(|r| !r.is_empty()).collect();
+        let mut rows_b: Vec<&str> = v_b.iter().map(|r| r.trim_end()).filter(|r| !r.is_empty()).collect();
+        rows_a.sort_unstable();
+        rows_b.sort_unstable();
+        res.comp_res = if rows_a != rows_b { OraCompRes::Fail } else { OraCompRes::Pass };
         false
     }
 
@@ -449,6 +459,19 @@ impl Oracle for Tlp {
 #[cfg(test)]
 mod tests {
     use super::*;
+
+    #[test]
+    fn compares_the_rows_not_only_their_number() {
+        let mut same_rows = CompRes { res_str_0: "\n1 \n2 \n\n".to_string(), res_str_1: "\n2 \n\n1 \n".to_string(), ..CompRes::default() };
+        Tlp::compare_norm(&mut same_rows);
+        assert_eq!(same_rows.comp_res, OraCompRes::Pass);
+        let mut other_rows = CompRes { res_str_0: "\n1 \n2 \n".to_string(), res_str_1: "\n999 \n2 \n".to_string(), ..CompRes::default() };
+        Tlp::compare_norm(&mut other_rows);
+        assert_eq!(other_rows.comp_res, OraCompRes::Fail);
+        let mut fewer_rows = CompRes { res_str_0: "\n1 \n2 \n".to_string(), res_str_1: "\n1 \n".to_string(), ..CompRes::default() };
+        Tlp::compare_norm(&mut fewer_rows);
+        assert_eq!(fewer_rows.comp_res, OraCompRes::Fail);
+    }
 
     #[test]
     fn rejects_window_functions() {

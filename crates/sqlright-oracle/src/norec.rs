@@ -110,6 +110,11 @@ impl Oracle for Norec {
         if t.is_empty(froms[0]) || t.is_empty(wheres[0]) {
             return false;
         }
+        // `count(*) FILTER (WHERE ...)` counts fewer rows than the WHERE
+        // clause alone, and the rewrite only keeps the WHERE clause.
+        if ir_wrapper::get_ir_node_in_stmt_with_type_full(t, stmt, IrType::FilterClause, false, true, true).iter().any(|&c| !t.is_empty(c)) {
+            return false;
+        }
         Self::has_count_star(t, stmt)
     }
 
@@ -234,6 +239,16 @@ pub fn parse_leading_int(s: &str) -> Option<i64> {
 #[cfg(test)]
 mod tests {
     use super::*;
+
+    #[test]
+    fn rejects_a_filter_clause() {
+        let mut q = parse_query("SELECT count(*) FILTER (WHERE v1 > 0) FROM v0 WHERE v1 < 10;").unwrap();
+        let stmt = ir_wrapper::get_first_stmt_from_root(&q.tree, q.root).unwrap();
+        assert!(!Norec.is_oracle_select_stmt(&mut q.tree, stmt));
+        let mut q = parse_query("SELECT count(*) FROM v0 WHERE v1 < 10;").unwrap();
+        let stmt = ir_wrapper::get_first_stmt_from_root(&q.tree, q.root).unwrap();
+        assert!(Norec.is_oracle_select_stmt(&mut q.tree, stmt));
+    }
 
     #[test]
     fn accepts_count_star_with_from_and_where() {
