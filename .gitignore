@@ -1,0 +1,6 @@
+/target
+/out
+/work
+*.o
+__pycache__/
+/grammar/tools/.bison-work
