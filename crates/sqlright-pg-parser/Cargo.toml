@@ -4,6 +4,11 @@ version.workspace = true
 edition.workspace = true
 license.workspace = true
 repository.workspace = true
-description = "SQLRight: pg-parser"
+description = "PostgreSQL parser that builds the SQLRight IR (generated from the Bison grammar)"
 
 [dependencies]
+sqlright-ir = { workspace = true }
+
+[[bin]]
+name = "pg-ir-dump"
+path = "src/bin/pg_ir_dump.rs"
