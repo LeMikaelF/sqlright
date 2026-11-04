@@ -276,8 +276,9 @@ impl Engine {
             let Some(stmt_root) = stmt.root else {
                 continue;
             };
+            // After the first statement at least, so a table can exist.
             let n = ir_wrapper::get_stmt_num(&cur.tree, cur.root);
-            let pos = self.mutator.rng.rand_int(n + 1);
+            let pos = if n == 0 { 0 } else { 1 + self.mutator.rng.rand_int(n) };
             let id = cur.tree.import(&stmt, stmt_root);
             ir_wrapper::append_stmt_at_idx(&mut cur.tree, cur.root, id, pos);
         }
