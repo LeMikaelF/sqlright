@@ -4,6 +4,9 @@ version.workspace = true
 edition.workspace = true
 license.workspace = true
 repository.workspace = true
-description = "SQLRight: oracle"
+description = "SQLRight oracles: NoREC, TLP and INDEX, and the result comparison"
 
 [dependencies]
+sqlright-ir = { workspace = true }
+sqlright-pg-parser = { workspace = true }
+sqlright-mutator = { workspace = true }
