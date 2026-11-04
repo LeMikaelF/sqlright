@@ -84,7 +84,7 @@ pub fn run(args: RunArgs) -> Result<()> {
         let name = if j == 0 { "main".to_string() } else { format!("s{j}") };
         let mut cmd = Command::new(&afl_fuzz);
         cmd.arg("-i").arg(&input).arg("-o").arg(&out);
-        cmd.arg("-t").arg(format!("{}+", args.timeout_ms));
+        cmd.arg("-t").arg(args.timeout_ms.to_string());
         cmd.arg("-m").arg("none");
         if let Some(t) = args.time {
             cmd.arg("-V").arg(t.to_string());

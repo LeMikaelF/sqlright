@@ -101,6 +101,12 @@ enum Command {
         /// Split a file into seeds of at most this many statements.
         #[arg(long, default_value_t = 30)]
         max_stmts: usize,
+        /// Run the statements on this harness and leave out the ones that fail.
+        #[arg(long)]
+        harness: Option<PathBuf>,
+        /// Kill the harness after this many seconds.
+        #[arg(long, default_value_t = 120)]
+        timeout_secs: u64,
     },
     /// Start afl-fuzz with the SQLRight mutator on the harness.
     Run(run::RunArgs),
@@ -115,7 +121,7 @@ fn main() -> Result<()> {
         Command::Minimize { case, oracle, harness, out, max_runs, timeout_secs } => {
             minimize_case(&case, &oracle, &harness, out.as_deref(), max_runs, Duration::from_secs(timeout_secs))
         }
-        Command::Seeds { from, out, max_stmts } => seeds::build(&from, &out, max_stmts),
+        Command::Seeds { from, out, max_stmts, harness, timeout_secs } => seeds::build(&from, &out, max_stmts, harness.as_deref(), Duration::from_secs(timeout_secs)),
         Command::Run(args) => run::run(args),
     }
 }

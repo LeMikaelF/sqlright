@@ -2,10 +2,16 @@
 //! `.sqltest` files of the turso conformance suite.
 
 use std::path::{Path, PathBuf};
+use std::time::Duration;
 
 use anyhow::{Context, Result};
 
-pub fn build(from: &[PathBuf], out: &Path, max_stmts: usize) -> Result<()> {
+use crate::harness;
+
+/// The marker SELECT between two statements when the harness filters a seed.
+const MARK: &str = "SQLRIGHT MARK";
+
+pub fn build(from: &[PathBuf], out: &Path, max_stmts: usize, harness_bin: Option<&Path>, timeout: Duration) -> Result<()> {
     std::fs::create_dir_all(out).with_context(|| format!("cannot create {}", out.display()))?;
     let mut files = Vec::new();
     for p in from {
@@ -15,6 +21,7 @@ pub fn build(from: &[PathBuf], out: &Path, max_stmts: usize) -> Result<()> {
     let mut seeds = 0usize;
     let mut kept = 0usize;
     let mut dropped = 0usize;
+    let mut rejected = 0usize;
     for file in &files {
         let text = std::fs::read_to_string(file).with_context(|| format!("cannot read {}", file.display()))?;
         let is_sqltest = file.extension().map(|e| e == "sqltest").unwrap_or(false);
@@ -30,6 +37,11 @@ pub fn build(from: &[PathBuf], out: &Path, max_stmts: usize) -> Result<()> {
                     dropped += 1;
                 }
             }
+            if let Some(h) = harness_bin {
+                let before = good.len();
+                good = drop_failing_statements(h, good, timeout)?;
+                rejected += before - good.len();
+            }
             for chunk in good.chunks(max_stmts.max(1)) {
                 let mut body = String::new();
                 for s in chunk {
@@ -43,8 +55,46 @@ pub fn build(from: &[PathBuf], out: &Path, max_stmts: usize) -> Result<()> {
             }
         }
     }
-    eprintln!("{} files read, {seeds} seeds written to {}, {kept} statements kept, {dropped} statements do not parse", files.len(), out.display());
+    eprintln!(
+        "{} files read, {seeds} seeds written to {}, {kept} statements kept, {dropped} statements do not parse, {rejected} statements fail on the harness",
+        files.len(),
+        out.display()
+    );
     Ok(())
+}
+
+/// Run the statements on the harness, with a marker SELECT after each one,
+/// and remove the statements that report an error. A statement that fails
+/// because an earlier one was removed goes in the next pass.
+fn drop_failing_statements(harness_bin: &Path, mut stmts: Vec<String>, timeout: Duration) -> Result<Vec<String>> {
+    for _pass in 0..4 {
+        if stmts.is_empty() {
+            break;
+        }
+        let mut text = String::new();
+        for (i, s) in stmts.iter().enumerate() {
+            text.push_str(s);
+            text.push_str(";\n");
+            text.push_str(&format!("SELECT '{MARK} {i}';\n"));
+        }
+        let output = harness::run(harness_bin, &text, timeout)?;
+        let mut failed = std::collections::HashSet::new();
+        let mut current = 0usize;
+        for line in output.lines() {
+            if let Some(rest) = line.strip_prefix(MARK) {
+                if let Ok(n) = rest.trim().parse::<usize>() {
+                    current = n + 1;
+                }
+            } else if line.starts_with("ERROR:") {
+                failed.insert(current);
+            }
+        }
+        if failed.is_empty() {
+            break;
+        }
+        stmts = stmts.into_iter().enumerate().filter(|(i, _)| !failed.contains(i)).map(|(_, s)| s).collect();
+    }
+    Ok(stmts)
 }
 
 fn collect_files(p: &Path, out: &mut Vec<PathBuf>) -> Result<()> {
