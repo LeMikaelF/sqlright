@@ -111,6 +111,10 @@ enum Command {
         /// Kill the harness after this many seconds.
         #[arg(long, default_value_t = 120)]
         timeout_secs: u64,
+        /// Keep BEGIN, COMMIT, ROLLBACK and SAVEPOINT statements. Without
+        /// them, a failing statement cannot abort the rest of a test case.
+        #[arg(long)]
+        keep_transactions: bool,
     },
     /// Start afl-fuzz with the SQLRight mutator on the harness.
     Run(run::RunArgs),
@@ -171,12 +175,14 @@ fn main() -> Result<()> {
             max_stmts,
             harness,
             timeout_secs,
+            keep_transactions,
         } => seeds::build(
             &from,
             &out,
             max_stmts,
             harness.as_deref(),
             Duration::from_secs(timeout_secs),
+            keep_transactions,
         ),
         Command::Run(args) => run::run(args),
     }

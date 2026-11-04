@@ -17,6 +17,7 @@ pub fn build(
     max_stmts: usize,
     harness_bin: Option<&Path>,
     timeout: Duration,
+    keep_transactions: bool,
 ) -> Result<()> {
     std::fs::create_dir_all(out).with_context(|| format!("cannot create {}", out.display()))?;
     let mut files = Vec::new();
@@ -28,6 +29,7 @@ pub fn build(
     let mut kept = 0usize;
     let mut dropped = 0usize;
     let mut rejected = 0usize;
+    let mut transactions = 0usize;
     for file in &files {
         let text = std::fs::read_to_string(file)
             .with_context(|| format!("cannot read {}", file.display()))?;
@@ -45,10 +47,12 @@ pub fn build(
         for group in groups {
             let mut good = Vec::new();
             for stmt in group {
-                if sqlright_pg_parser::parse_query(&stmt).is_some() {
-                    good.push(stmt);
-                } else {
-                    dropped += 1;
+                match sqlright_pg_parser::parse_query(&stmt) {
+                    Some(q) if keep_transactions || !is_transaction_statement(&q) => {
+                        good.push(stmt)
+                    }
+                    Some(_) => transactions += 1,
+                    None => dropped += 1,
                 }
             }
             if let Some(h) = harness_bin {
@@ -70,7 +74,7 @@ pub fn build(
         }
     }
     eprintln!(
-        "{} files read, {seeds} seeds written to {}, {kept} statements kept, {dropped} statements do not parse, {rejected} statements fail on the harness",
+        "{} files read, {seeds} seeds written to {}, {kept} statements kept, {dropped} statements do not parse, {transactions} transaction statements left out, {rejected} statements fail on the harness",
         files.len(),
         out.display()
     );
@@ -118,6 +122,21 @@ fn drop_failing_statements(
             .collect();
     }
     Ok(stmts)
+}
+
+/// BEGIN, COMMIT, ROLLBACK, SAVEPOINT and the like. A statement that fails
+/// inside a transaction block puts the connection in the aborted state, and
+/// every later statement of the test case fails too.
+fn is_transaction_statement(q: &sqlright_pg_parser::ParsedQuery) -> bool {
+    use sqlright_ir::IrType;
+    sqlright_mutator::ir_wrapper::get_stmt_ir_vec(&q.tree, q.root)
+        .iter()
+        .any(|&s| {
+            matches!(
+                q.tree.ty(s),
+                IrType::TransactionStmt | IrType::TransactionStmtLegacy
+            )
+        })
 }
 
 fn collect_files(p: &Path, out: &mut Vec<PathBuf>) -> Result<()> {

@@ -125,8 +125,14 @@ fn run_statements(sql: &str, out: &mut Vec<u8>) {
     let _ = conn.close();
 }
 
-/// Run one statement and append its rows or its error.
+/// Run one statement and append its rows or its error. A result marker
+/// (`SELECT 'BEGIN VERI n'`) is printed without running it: inside an
+/// aborted transaction the SELECT would fail and the marker would be lost.
 fn run_one(conn: &Connection, sql: &str, out: &mut Vec<u8>) {
+    if let Some(marker) = result_marker(sql) {
+        let _ = writeln!(out, "{marker} ");
+        return;
+    }
     match conn.query(sql) {
         Ok(Some(mut stmt)) => {
             stmt.set_query_timeout_override(Some(Some(STATEMENT_TIMEOUT)));
@@ -149,6 +155,17 @@ fn run_one(conn: &Connection, sql: &str, out: &mut Vec<u8>) {
         Ok(None) => {}
         Err(e) => write_error(out, &e),
     }
+}
+
+/// `BEGIN VERI n` or `END VERI n` when the statement is `SELECT '<that>'`.
+fn result_marker(sql: &str) -> Option<&str> {
+    let s = sql.trim().trim_end_matches(';').trim();
+    let rest = s.get(..6).filter(|p| p.eq_ignore_ascii_case("select"))?;
+    let _ = rest;
+    let quoted = s[6..].trim();
+    let inner = quoted.strip_prefix('\'')?.strip_suffix('\'')?;
+    let is_marker = inner.strip_prefix("BEGIN VERI ").or_else(|| inner.strip_prefix("END VERI ")).map(|n| !n.is_empty() && n.bytes().all(|b| b.is_ascii_digit())).unwrap_or(false);
+    is_marker.then_some(inner)
 }
 
 fn write_error(out: &mut Vec<u8>, error: &turso_pg::Error) {

@@ -182,6 +182,11 @@ purpose:
   rewrite keeps only the WHERE clause, so the filtered count never matched.
 - The output of the harness has a first line with the hash of the input.
   The oracle only compares output that belongs to the test case it sent.
+- The harness prints the result markers (`SELECT 'BEGIN VERI n'`) itself
+  instead of running them. Inside an aborted transaction block every
+  statement fails, the marker SELECT too, and the result blocks of two
+  pairs ran into each other. For the same reason `sqlright seeds` leaves
+  out BEGIN, COMMIT, ROLLBACK and SAVEPOINT statements by default.
 - The harness prints `ERROR:  <message>` for a failed statement, like the
   C++ PostgreSQL client did, so the result extraction is unchanged.
 
@@ -201,8 +206,9 @@ splits the `.sql` file and the harness output at the `BEGIN VERI n` and
 `END VERI n` markers and groups the mismatching pairs.) The three floods
 of the first tursopg campaigns were: a non-boolean WHERE expression that
 tursopg accepts (NoREC), window functions taken for aggregates (TLP), and
-`count(*) FILTER (...)` (NoREC). Each was an oracle problem and was fixed
-in the oracle, not by filtering reports. A flood that is a real database
+`count(*) FILTER (...)` (NoREC), and lost result markers after a failed
+statement in a transaction block (NoREC). Each was a SQLRight problem and
+was fixed at its source, not by filtering reports. A flood that is a real database
 bug gets one entry in `docs/turso-bugs.md` with a minimal reproducer.
 
 ## Rules for changes
