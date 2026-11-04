@@ -351,6 +351,13 @@ impl Oracle for Tlp {
         if ir_wrapper::is_exist_limit_clause(t, stmt) || ir_wrapper::is_exist_set_operator(t, stmt) {
             return false;
         }
+        // A window function looks like an aggregate but returns one row per
+        // input row, so the partitioned form cannot be compared with it.
+        for ty in [IrType::OverClause, IrType::WindowClause] {
+            if ir_wrapper::get_ir_node_in_stmt_with_type_full(t, stmt, ty, false, true, true).iter().any(|&c| !t.is_empty(c)) {
+                return false;
+            }
+        }
         let froms = ir_wrapper::get_ir_node_in_stmt_with_type(t, stmt, IrType::FromClause, false);
         let wheres = ir_wrapper::get_ir_node_in_stmt_with_type(t, stmt, IrType::WhereClause, false);
         if froms.is_empty() || wheres.is_empty() || ir_wrapper::get_num_target_el_in_select_clause(t, stmt) != 1 {
@@ -442,6 +449,17 @@ impl Oracle for Tlp {
 #[cfg(test)]
 mod tests {
     use super::*;
+
+    #[test]
+    fn rejects_window_functions() {
+        let tlp = Tlp;
+        let mut q = sqlright_pg_parser::parse_query("SELECT avg(c1) OVER (PARTITION BY c2) FROM v0 WHERE c1 > 0;").unwrap();
+        let stmt = sqlright_mutator::ir_wrapper::get_first_stmt_from_root(&q.tree, q.root).unwrap();
+        assert!(!tlp.is_oracle_select_stmt(&mut q.tree, stmt));
+        let mut q = sqlright_pg_parser::parse_query("SELECT avg(c1) FROM v0 WHERE c1 > 0;").unwrap();
+        let stmt = sqlright_mutator::ir_wrapper::get_first_stmt_from_root(&q.tree, q.root).unwrap();
+        assert!(tlp.is_oracle_select_stmt(&mut q.tree, stmt));
+    }
 
     #[test]
     fn partitions_a_normal_select() {

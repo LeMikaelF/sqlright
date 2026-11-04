@@ -15,8 +15,12 @@ use sqlright_pg_parser::parse_query;
 pub struct Norec;
 
 const TEMPLATE: &str = "SELECT COUNT ( * ) FROM x WHERE x=0;";
+/// The rewritten form. `CASE WHEN` instead of the C++ `( true ) :: INT`: a
+/// database that accepts a non-boolean WHERE expression (tursopg does)
+/// counts the rows where the expression is true in both forms, while the
+/// cast would sum the expression values.
 const POST_FIX_TEMPLATE: &str =
-    "SELECT COALESCE( SUM(countt), 0) FROM ( SELECT ALL( true ) :: INT as countt FROM v2 ORDER BY ( v1 ) ) as ress;";
+    "SELECT COALESCE( SUM(countt), 0) FROM ( SELECT ALL CASE WHEN ( true ) THEN 1 ELSE 0 END as countt FROM v2 ORDER BY ( v1 ) ) as ress;";
 
 impl Norec {
     /// Keep only the first select target. The C++ edits the statement in
@@ -159,7 +163,7 @@ impl Oracle for Norec {
             return Vec::new();
         };
         let dest_consts = ir_wrapper::get_ir_node_in_stmt_with_type(&trans, trans_root, IrType::AexprConst, true);
-        let Some(dest_where) = dest_consts.first().copied() else {
+        let Some(dest_where) = dest_consts.iter().copied().find(|&c| trans.to_string(c).trim().eq_ignore_ascii_case("true")) else {
             return Vec::new();
         };
         let where_copy = trans.import(t, src_where_expr);
@@ -253,7 +257,7 @@ mod tests {
         assert_eq!(forms.len(), 2);
         let texts: Vec<String> = forms.iter().map(|f| f.to_string(f.root.unwrap())).collect();
         assert_eq!(texts[0], "SELECT count ( * ) FROM v0 WHERE v1 = 1 ORDER BY v2");
-        assert_eq!(texts[1], "SELECT COALESCE ( sum ( countt ), 0 ) FROM ( SELECT ALL ( v1 = 1 ) :: INT AS countt FROM v0 ORDER BY v2 ) AS ress");
+        assert_eq!(texts[1], "SELECT COALESCE ( sum ( countt ), 0 ) FROM ( SELECT ALL CASE WHEN ( v1 = 1 ) THEN 1 ELSE 0 END AS countt FROM v0 ORDER BY v2 ) AS ress");
         assert!(parse_query(&texts[1]).is_some());
     }
 
