@@ -417,11 +417,29 @@ impl Tlp {
         false
     }
 
+    /// Compare two aggregate results as numbers. `avg(bigint)` prints as a
+    /// double in tursopg (`-2.77e+18`) while `sum(s) / sum(c)` is an integer,
+    /// so the values are compared with a relative tolerance. The C++ parsed
+    /// both as `int` and reported an error on overflow.
     fn compare_aggr(res: &mut CompRes) -> bool {
         if find_string_in(&res.res_str_0, "ERROR") || find_string_in(&res.res_str_1, "ERROR") {
             res.comp_res = OraCompRes::Error;
             return true;
         }
+        let (Some(a), Some(b)) = (first_number(&res.res_str_0), first_number(&res.res_str_1)) else {
+            res.comp_res = OraCompRes::Error;
+            return true;
+        };
+        res.res_int_0 = a as i64;
+        res.res_int_1 = b as i64;
+        let tolerance = 1e-9 * a.abs().max(b.abs()).max(1.0);
+        res.comp_res = if (a - b).abs() > tolerance {
+            OraCompRes::Fail
+        } else {
+            OraCompRes::Pass
+        };
+        false
+    }
         let (Some(a), Some(b)) = (
             parse_leading_int(&res.res_str_0),
             parse_leading_int(&res.res_str_1),
@@ -441,6 +459,11 @@ impl Tlp {
 }
 
 /// Count the rows of a result block, like the C++: newlines minus empty lines.
+/// The first non-empty line of a result block as a number.
+fn first_number(block: &str) -> Option<f64> {
+    block.lines().map(str::trim).find(|l| !l.is_empty())?.parse::<f64>().ok()
+}
+
 /// The text without whitespace, for comparing two printed expressions.
 fn squeeze(text: &str) -> String {
     text.chars().filter(|c| !c.is_whitespace()).collect()
@@ -645,6 +668,19 @@ mod tests {
         let mut q = parse_query("SELECT c5 FROM v4 WHERE c5 > 0 GROUP BY c5;").unwrap();
         let stmt = ir_wrapper::get_first_stmt_from_root(&q.tree, q.root).unwrap();
         assert!(Tlp.is_oracle_select_stmt(&mut q.tree, stmt));
+    }
+
+    #[test]
+    fn compares_aggregates_as_numbers() {
+        let mut same_value = CompRes { res_str_0: "\n-2.77322779960316e+18 \n".into(), res_str_1: "\n-2773227799603160576 \n".into(), ..CompRes::default() };
+        Tlp::compare_aggr(&mut same_value);
+        assert_eq!(same_value.comp_res, OraCompRes::Pass);
+        let mut other_value = CompRes { res_str_0: "\n10 \n".into(), res_str_1: "\n11 \n".into(), ..CompRes::default() };
+        Tlp::compare_aggr(&mut other_value);
+        assert_eq!(other_value.comp_res, OraCompRes::Fail);
+        let mut no_value = CompRes { res_str_0: "\n\n".into(), res_str_1: "\n0 \n".into(), ..CompRes::default() };
+        Tlp::compare_aggr(&mut no_value);
+        assert_eq!(no_value.comp_res, OraCompRes::Error);
     }
 
     #[test]
