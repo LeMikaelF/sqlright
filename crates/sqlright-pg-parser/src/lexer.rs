@@ -464,7 +464,7 @@ impl<'a> Scanner<'a> {
         // An embedded comment start ends the operator.
         let mut nchars = len;
         for i in 1..len.saturating_sub(1) + 1 {
-            if i + 1 <= len - 1 + 1 && i + 1 < len + 1 {
+            if i < len {
                 if run.get(i) == Some(&b'/') && run.get(i + 1) == Some(&b'*') {
                     nchars = i;
                     break;
