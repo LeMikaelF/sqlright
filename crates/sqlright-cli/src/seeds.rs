@@ -11,7 +11,13 @@ use crate::harness;
 /// The marker SELECT between two statements when the harness filters a seed.
 const MARK: &str = "SQLRIGHT MARK";
 
-pub fn build(from: &[PathBuf], out: &Path, max_stmts: usize, harness_bin: Option<&Path>, timeout: Duration) -> Result<()> {
+pub fn build(
+    from: &[PathBuf],
+    out: &Path,
+    max_stmts: usize,
+    harness_bin: Option<&Path>,
+    timeout: Duration,
+) -> Result<()> {
     std::fs::create_dir_all(out).with_context(|| format!("cannot create {}", out.display()))?;
     let mut files = Vec::new();
     for p in from {
@@ -23,10 +29,18 @@ pub fn build(from: &[PathBuf], out: &Path, max_stmts: usize, harness_bin: Option
     let mut dropped = 0usize;
     let mut rejected = 0usize;
     for file in &files {
-        let text = std::fs::read_to_string(file).with_context(|| format!("cannot read {}", file.display()))?;
+        let text = std::fs::read_to_string(file)
+            .with_context(|| format!("cannot read {}", file.display()))?;
         let is_sqltest = file.extension().map(|e| e == "sqltest").unwrap_or(false);
-        let groups = if is_sqltest { sqltest_groups(&text) } else { vec![split_sql(&text)] };
-        let stem = file.file_stem().map(|s| s.to_string_lossy().into_owned()).unwrap_or_else(|| "seed".to_string());
+        let groups = if is_sqltest {
+            sqltest_groups(&text)
+        } else {
+            vec![split_sql(&text)]
+        };
+        let stem = file
+            .file_stem()
+            .map(|s| s.to_string_lossy().into_owned())
+            .unwrap_or_else(|| "seed".to_string());
         let mut k = 0;
         for group in groups {
             let mut good = Vec::new();
@@ -66,7 +80,11 @@ pub fn build(from: &[PathBuf], out: &Path, max_stmts: usize, harness_bin: Option
 /// Run the statements on the harness, with a marker SELECT after each one,
 /// and remove the statements that report an error. A statement that fails
 /// because an earlier one was removed goes in the next pass.
-fn drop_failing_statements(harness_bin: &Path, mut stmts: Vec<String>, timeout: Duration) -> Result<Vec<String>> {
+fn drop_failing_statements(
+    harness_bin: &Path,
+    mut stmts: Vec<String>,
+    timeout: Duration,
+) -> Result<Vec<String>> {
     for _pass in 0..4 {
         if stmts.is_empty() {
             break;
@@ -92,7 +110,12 @@ fn drop_failing_statements(harness_bin: &Path, mut stmts: Vec<String>, timeout: 
         if failed.is_empty() {
             break;
         }
-        stmts = stmts.into_iter().enumerate().filter(|(i, _)| !failed.contains(i)).map(|(_, s)| s).collect();
+        stmts = stmts
+            .into_iter()
+            .enumerate()
+            .filter(|(i, _)| !failed.contains(i))
+            .map(|(_, s)| s)
+            .collect();
     }
     Ok(stmts)
 }
@@ -102,7 +125,11 @@ fn collect_files(p: &Path, out: &mut Vec<PathBuf>) -> Result<()> {
         for entry in std::fs::read_dir(p).with_context(|| format!("cannot read {}", p.display()))? {
             collect_files(&entry?.path(), out)?;
         }
-    } else if p.extension().map(|e| e == "sql" || e == "sqltest").unwrap_or(false) {
+    } else if p
+        .extension()
+        .map(|e| e == "sql" || e == "sqltest")
+        .unwrap_or(false)
+    {
         out.push(p.to_path_buf());
     }
     Ok(())
@@ -158,11 +185,16 @@ pub fn split_sql(text: &str) -> Vec<String> {
                 while j < chars.len() && (chars[j].is_alphanumeric() || chars[j] == '_') {
                     j += 1;
                 }
-                if j < chars.len() && chars[j] == '$' && (i + 1 == j || !chars[i + 1].is_ascii_digit()) {
+                if j < chars.len()
+                    && chars[j] == '$'
+                    && (i + 1 == j || !chars[i + 1].is_ascii_digit())
+                {
                     let tag: String = chars[i..=j].iter().collect();
                     let tag_chars: Vec<char> = tag.chars().collect();
                     let mut k = j + 1;
-                    while k + tag_chars.len() <= chars.len() && chars[k..k + tag_chars.len()] != tag_chars[..] {
+                    while k + tag_chars.len() <= chars.len()
+                        && chars[k..k + tag_chars.len()] != tag_chars[..]
+                    {
                         k += 1;
                     }
                     let end = (k + tag_chars.len()).min(chars.len());
@@ -190,7 +222,10 @@ pub fn split_sql(text: &str) -> Vec<String> {
 }
 
 fn push_stmt(stmts: &mut Vec<String>, cur: &mut String) {
-    let lines: Vec<&str> = cur.lines().filter(|l| !l.trim_start().starts_with('\\')).collect();
+    let lines: Vec<&str> = cur
+        .lines()
+        .filter(|l| !l.trim_start().starts_with('\\'))
+        .collect();
     let s = lines.join("\n").trim().to_string();
     if !s.is_empty() {
         stmts.push(s);
@@ -215,7 +250,9 @@ pub fn sqltest_groups(text: &str) -> Vec<Vec<String>> {
         if let Some(rest) = t.strip_prefix('@') {
             let mut parts = rest.split_whitespace();
             match parts.next() {
-                Some("setup") => pending_setups.extend(parts.map(|s| s.trim_end_matches(',').to_string())),
+                Some("setup") => {
+                    pending_setups.extend(parts.map(|s| s.trim_end_matches(',').to_string()))
+                }
                 Some("backend") => pending_backend = parts.next().map(|s| s.to_string()),
                 _ => {}
             }
@@ -267,14 +304,34 @@ mod tests {
 
     #[test]
     fn splits_at_semicolons_outside_quotes_and_comments() {
-        let stmts = split_sql("SELECT 'a;b'; -- c;\nSELECT $$x;y$$, \"q;\"; /* ; */ SELECT 1;\n\\d t\nSELECT 2");
-        assert_eq!(stmts, vec!["SELECT 'a;b'", "SELECT $$x;y$$, \"q;\"", "SELECT 1", "SELECT 2"]);
+        let stmts = split_sql(
+            "SELECT 'a;b'; -- c;\nSELECT $$x;y$$, \"q;\"; /* ; */ SELECT 1;\n\\d t\nSELECT 2",
+        );
+        assert_eq!(
+            stmts,
+            vec![
+                "SELECT 'a;b'",
+                "SELECT $$x;y$$, \"q;\"",
+                "SELECT 1",
+                "SELECT 2"
+            ]
+        );
     }
 
     #[test]
     fn groups_sqltest_tests_with_their_setup() {
         let text = "# comment\n@database :memory:\nsetup s1 {\n    CREATE TABLE t (a INT);\n    INSERT INTO t VALUES (1);\n}\n\n@setup s1\ntest one {\n    SELECT a FROM t;\n}\nexpect {\n    1\n}\n\n@backend postgres\ntest pg_only {\n    SELECT 2;\n}\n\ntest two {\n    SELECT 3;\n}\n";
         let groups = sqltest_groups(text);
-        assert_eq!(groups, vec![vec!["CREATE TABLE t (a INT)", "INSERT INTO t VALUES (1)", "SELECT a FROM t"], vec!["SELECT 3"]]);
+        assert_eq!(
+            groups,
+            vec![
+                vec![
+                    "CREATE TABLE t (a INT)",
+                    "INSERT INTO t VALUES (1)",
+                    "SELECT a FROM t"
+                ],
+                vec!["SELECT 3"]
+            ]
+        );
     }
 }

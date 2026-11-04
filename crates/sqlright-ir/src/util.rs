@@ -121,7 +121,8 @@ pub fn is_digits(s: &str) -> bool {
     if s == "NaN" {
         return true;
     }
-    s.chars().all(|c| c.is_ascii_digit() || c == '.' || c == ' ')
+    s.chars()
+        .all(|c| c.is_ascii_digit() || c == '.' || c == ' ')
 }
 
 #[cfg(test)]

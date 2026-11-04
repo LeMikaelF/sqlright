@@ -33,12 +33,22 @@ impl Config {
         let var = |name: &str| std::env::var(name).ok().filter(|v| !v.is_empty());
         Config {
             oracle: var("SQLRIGHT_ORACLE").unwrap_or_else(|| "NOREC".to_string()),
-            init_lib_dirs: var("SQLRIGHT_INIT_LIB").map(|v| v.split(':').map(PathBuf::from).collect()).unwrap_or_default(),
+            init_lib_dirs: var("SQLRIGHT_INIT_LIB")
+                .map(|v| v.split(':').map(PathBuf::from).collect())
+                .unwrap_or_default(),
             seed_dir: var("SQLRIGHT_SEED_DIR").map(PathBuf::from),
-            output_path: PathBuf::from(var("SQLRIGHT_OUTPUT").unwrap_or_else(|| "/tmp/sqlright_output.txt".to_string())),
-            bug_dir: PathBuf::from(var("SQLRIGHT_BUG_DIR").unwrap_or_else(|| "sqlright_bugs".to_string())),
-            select_count: var("SQLRIGHT_SELECT_COUNT").and_then(|v| v.parse().ok()).unwrap_or(10),
-            max_cases_per_seed: var("SQLRIGHT_MAX_CASES").and_then(|v| v.parse().ok()).unwrap_or(2000),
+            output_path: PathBuf::from(
+                var("SQLRIGHT_OUTPUT").unwrap_or_else(|| "/tmp/sqlright_output.txt".to_string()),
+            ),
+            bug_dir: PathBuf::from(
+                var("SQLRIGHT_BUG_DIR").unwrap_or_else(|| "sqlright_bugs".to_string()),
+            ),
+            select_count: var("SQLRIGHT_SELECT_COUNT")
+                .and_then(|v| v.parse().ok())
+                .unwrap_or(10),
+            max_cases_per_seed: var("SQLRIGHT_MAX_CASES")
+                .and_then(|v| v.parse().ok())
+                .unwrap_or(2000),
             debug: var("SQLRIGHT_DEBUG").is_some(),
             rng_seed: var("SQLRIGHT_RNG_SEED").and_then(|v| v.parse().ok()),
         }

@@ -8,8 +8,11 @@
 
 #[allow(clippy::all)]
 pub mod generated {
+    #[rustfmt::skip]
     pub mod actions;
+    #[rustfmt::skip]
     pub mod tables;
+    #[rustfmt::skip]
     pub mod tokens;
 }
 pub mod driver;
@@ -47,13 +50,19 @@ mod tests {
     #[test]
     fn parses_create_table() {
         let q = parse_query("CREATE TABLE v0 (v1 INT, v2 TEXT);").expect("parse");
-        assert_eq!(q.tree.to_string(q.root), "CREATE TABLE v0 ( v1 INT, v2 text );");
+        assert_eq!(
+            q.tree.to_string(q.root),
+            "CREATE TABLE v0 ( v1 INT, v2 text );"
+        );
     }
 
     #[test]
     fn parses_select() {
         let q = parse_query("SELECT COUNT(*) FROM v0 WHERE v1 = 1").expect("parse");
-        assert_eq!(q.tree.to_string(q.root), "SELECT count ( * ) FROM v0 WHERE v1 = 1;");
+        assert_eq!(
+            q.tree.to_string(q.root),
+            "SELECT count ( * ) FROM v0 WHERE v1 = 1;"
+        );
     }
 
     #[test]

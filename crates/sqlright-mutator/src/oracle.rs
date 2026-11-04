@@ -108,19 +108,41 @@ pub trait Oracle {
 
     /// Rewrite before names are filled in. Returns a new tree with the
     /// rewritten statement as root, or `None` for no rewrite.
-    fn pre_fix_transform_select_stmt(&self, _mutator: &mut Mutator, _t: &mut IrTree, _stmt: IrId) -> Option<IrTree> {
+    fn pre_fix_transform_select_stmt(
+        &self,
+        _mutator: &mut Mutator,
+        _t: &mut IrTree,
+        _stmt: IrId,
+    ) -> Option<IrTree> {
         None
     }
 
-    fn pre_fix_transform_normal_stmt(&self, _mutator: &mut Mutator, _t: &mut IrTree, _stmt: IrId) -> Option<IrTree> {
+    fn pre_fix_transform_normal_stmt(
+        &self,
+        _mutator: &mut Mutator,
+        _t: &mut IrTree,
+        _stmt: IrId,
+    ) -> Option<IrTree> {
         None
     }
 
     /// Rewrite after names are filled in. Returns the equivalent forms, the
     /// original form first. An empty vector drops the statement.
-    fn post_fix_transform_select_stmt(&self, mutator: &mut Mutator, t: &mut IrTree, stmt: IrId, multi_run_id: usize) -> Vec<IrTree>;
+    fn post_fix_transform_select_stmt(
+        &self,
+        mutator: &mut Mutator,
+        t: &mut IrTree,
+        stmt: IrId,
+        multi_run_id: usize,
+    ) -> Vec<IrTree>;
 
-    fn post_fix_transform_normal_stmt(&self, _mutator: &mut Mutator, _t: &mut IrTree, _stmt: IrId, _multi_run_id: usize) -> Vec<IrTree> {
+    fn post_fix_transform_normal_stmt(
+        &self,
+        _mutator: &mut Mutator,
+        _t: &mut IrTree,
+        _stmt: IrId,
+        _multi_run_id: usize,
+    ) -> Vec<IrTree> {
         Vec::new()
     }
 
@@ -146,7 +168,10 @@ pub fn is_oracle_select_str(oracle: &dyn Oracle, sql: &str) -> bool {
 
 pub fn count_oracle_select_stmts(oracle: &dyn Oracle, t: &mut IrTree, root: IrId) -> usize {
     let stmts = ir_wrapper::get_stmt_ir_vec(t, root);
-    stmts.into_iter().filter(|s| oracle.is_oracle_select_stmt(t, *s)).count()
+    stmts
+        .into_iter()
+        .filter(|s| oracle.is_oracle_select_stmt(t, *s))
+        .count()
 }
 
 /// Remove every SELECT statement of the query.
@@ -170,7 +195,10 @@ pub fn remove_oracle_select_stmt_from_ir(oracle: &dyn Oracle, t: &mut IrTree, ro
 /// Produce one oracle-compatible SELECT: take a SELECT from the library or
 /// the oracle template, mutate it while the oracle still accepts it, and
 /// return it as the root of a new tree. The C++ `get_random_mutated_select_stmt`.
-pub fn get_random_mutated_select_stmt(oracle: &dyn Oracle, mutator: &mut Mutator) -> Option<IrTree> {
+pub fn get_random_mutated_select_stmt(
+    oracle: &dyn Oracle,
+    mutator: &mut Mutator,
+) -> Option<IrTree> {
     mutator.stats.total_rand_valid += 1;
     // The C++ loops until it succeeds. Give up after many tries instead.
     for _ in 0..200 {
@@ -219,8 +247,13 @@ pub fn get_random_mutated_select_stmt(oracle: &dyn Oracle, mutator: &mut Mutator
             let Some(new_sub) = new_sub else {
                 continue;
             };
-            let new_node = parsed.tree.import(&new_sub, new_sub.root.expect("subtree root"));
-            if !parsed.tree.swap_node(parsed.root, mutate_node, Some(new_node)) {
+            let new_node = parsed
+                .tree
+                .import(&new_sub, new_sub.root.expect("subtree root"));
+            if !parsed
+                .tree
+                .swap_node(parsed.root, mutate_node, Some(new_node))
+            {
                 continue;
             }
             let new_valid_select_str = parsed.tree.to_string(parsed.root);
@@ -230,17 +263,23 @@ pub fn get_random_mutated_select_stmt(oracle: &dyn Oracle, mutator: &mut Mutator
                 None
             };
             // Put the original node back.
-            parsed.tree.swap_node(parsed.root, new_node, Some(mutate_node));
+            parsed
+                .tree
+                .swap_node(parsed.root, new_node, Some(mutate_node));
             let Some(new_struct) = new_struct else {
                 continue;
             };
             let Some(mut verified) = parse_query(&new_valid_select_str) else {
                 continue;
             };
-            let Some(verified_stmt) = ir_wrapper::get_first_stmt_from_root(&verified.tree, verified.root) else {
+            let Some(verified_stmt) =
+                ir_wrapper::get_first_stmt_from_root(&verified.tree, verified.root)
+            else {
                 continue;
             };
-            if oracle.is_oracle_select_stmt(&mut verified.tree, verified_stmt) && new_struct != ori_struct {
+            if oracle.is_oracle_select_stmt(&mut verified.tree, verified_stmt)
+                && new_struct != ori_struct
+            {
                 if use_temp {
                     mutator.stats.total_temp += 1;
                 }

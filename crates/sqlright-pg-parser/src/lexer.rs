@@ -58,12 +58,48 @@ fn is_dolq_cont(c: u8) -> bool {
 
 /// The characters that are single-character tokens.
 fn is_self(c: u8) -> bool {
-    matches!(c, b',' | b'(' | b')' | b'[' | b']' | b'.' | b';' | b':' | b'+' | b'-' | b'*' | b'/' | b'%' | b'^' | b'<' | b'>' | b'=')
+    matches!(
+        c,
+        b',' | b'('
+            | b')'
+            | b'['
+            | b']'
+            | b'.'
+            | b';'
+            | b':'
+            | b'+'
+            | b'-'
+            | b'*'
+            | b'/'
+            | b'%'
+            | b'^'
+            | b'<'
+            | b'>'
+            | b'='
+    )
 }
 
 /// The characters that can make up an `Op` token.
 fn is_op_char(c: u8) -> bool {
-    matches!(c, b'~' | b'!' | b'@' | b'#' | b'^' | b'&' | b'|' | b'`' | b'?' | b'+' | b'-' | b'*' | b'/' | b'%' | b'<' | b'>' | b'=')
+    matches!(
+        c,
+        b'~' | b'!'
+            | b'@'
+            | b'#'
+            | b'^'
+            | b'&'
+            | b'|'
+            | b'`'
+            | b'?'
+            | b'+'
+            | b'-'
+            | b'*'
+            | b'/'
+            | b'%'
+            | b'<'
+            | b'>'
+            | b'='
+    )
 }
 
 /// Bytes to a string. Octal and hex escapes can produce bytes that are not
@@ -99,7 +135,9 @@ pub fn keyword_lookup(word: &[u8]) -> Option<(i32, &'static str)> {
         return None;
     }
     let lower: Vec<u8> = word.iter().map(|c| c.to_ascii_lowercase()).collect();
-    let idx = KEYWORDS.binary_search_by(|(name, _, _, _)| name.as_bytes().cmp(lower.as_slice())).ok()?;
+    let idx = KEYWORDS
+        .binary_search_by(|(name, _, _, _)| name.as_bytes().cmp(lower.as_slice()))
+        .ok()?;
     let (name, token, _, _) = KEYWORDS[idx];
     Some((token, name))
 }
@@ -153,7 +191,12 @@ pub fn str_udeescape(input: &str, escape: u8) -> String {
     let mut i = 0;
     let hex4 = |p: usize| -> Option<u32> {
         if p + 4 <= bytes.len() && bytes[p..p + 4].iter().all(|c| c.is_ascii_hexdigit()) {
-            Some((hexval(bytes[p]) << 12) + (hexval(bytes[p + 1]) << 8) + (hexval(bytes[p + 2]) << 4) + hexval(bytes[p + 3]))
+            Some(
+                (hexval(bytes[p]) << 12)
+                    + (hexval(bytes[p + 1]) << 8)
+                    + (hexval(bytes[p + 2]) << 4)
+                    + hexval(bytes[p + 3]),
+            )
         } else {
             None
         }
@@ -258,7 +301,12 @@ pub struct Scanner<'a> {
 
 impl<'a> Scanner<'a> {
     pub fn new(src: &'a str) -> Scanner<'a> {
-        Scanner { src: src.as_bytes(), pos: 0, literal: Vec::new(), warnings: Vec::new() }
+        Scanner {
+            src: src.as_bytes(),
+            pos: 0,
+            literal: Vec::new(),
+            warnings: Vec::new(),
+        }
     }
 
     fn peek(&self, offset: usize) -> Option<u8> {
@@ -376,7 +424,11 @@ impl<'a> Scanner<'a> {
                         _ => {
                             // {xufailed}: the identifier is just "u"
                             self.pos += 1;
-                            return Token::new(tok::IDENT, YyVal::Str(downcase_truncate_identifier(&[c])), start);
+                            return Token::new(
+                                tok::IDENT,
+                                YyVal::Str(downcase_truncate_identifier(&[c])),
+                                start,
+                            );
                         }
                     },
                     _ => {}
@@ -387,7 +439,11 @@ impl<'a> Scanner<'a> {
             if let Some((token, name)) = keyword_lookup(word) {
                 return Token::new(token, YyVal::Str(name.to_string()), start);
             }
-            return Token::new(tok::IDENT, YyVal::Str(downcase_truncate_identifier(word)), start);
+            return Token::new(
+                tok::IDENT,
+                YyVal::Str(downcase_truncate_identifier(word)),
+                start,
+            );
         }
         match c {
             b'\'' => {
@@ -480,7 +536,10 @@ impl<'a> Scanner<'a> {
         if nchars > 1 && (run[nchars - 1] == b'+' || run[nchars - 1] == b'-') {
             let mut has_special = false;
             for i in (0..nchars - 1).rev() {
-                if matches!(run[i], b'~' | b'!' | b'@' | b'#' | b'^' | b'&' | b'|' | b'`' | b'?' | b'%') {
+                if matches!(
+                    run[i],
+                    b'~' | b'!' | b'@' | b'#' | b'^' | b'&' | b'|' | b'`' | b'?' | b'%'
+                ) {
                     has_special = true;
                     break;
                 }
@@ -520,7 +579,10 @@ impl<'a> Scanner<'a> {
                 while self.at(end).is_some_and(|c| c.is_ascii_digit()) {
                     end += 1;
                 }
-                let num: i64 = std::str::from_utf8(&self.src[self.pos + 1..end]).unwrap().parse().unwrap_or(0);
+                let num: i64 = std::str::from_utf8(&self.src[self.pos + 1..end])
+                    .unwrap()
+                    .parse()
+                    .unwrap_or(0);
                 self.pos = end;
                 Token::new(tok::PARAM, YyVal::Ival(num), start)
             }
@@ -615,7 +677,11 @@ impl<'a> Scanner<'a> {
                 }
                 if unicode {
                     // De-escaping and truncation happen in the filter.
-                    return Token::new(tok::UIDENT, YyVal::Str(bytes_to_string(&self.literal)), start);
+                    return Token::new(
+                        tok::UIDENT,
+                        YyVal::Str(bytes_to_string(&self.literal)),
+                        start,
+                    );
                 }
                 let mut ident = bytes_to_string(&self.literal);
                 truncate_identifier(&mut ident);
@@ -894,7 +960,10 @@ pub struct Lexer<'a> {
 
 impl<'a> Lexer<'a> {
     pub fn new(src: &'a str) -> Lexer<'a> {
-        Lexer { scanner: Scanner::new(src), lookahead: None }
+        Lexer {
+            scanner: Scanner::new(src),
+            lookahead: None,
+        }
     }
 
     pub fn warnings(&self) -> &[String] {
@@ -906,14 +975,16 @@ impl<'a> Lexer<'a> {
             Some(t) => t,
             None => self.scanner.next_token(),
         };
-        if !matches!(cur.kind, k if k == tok::NOT || k == tok::NULLS_P || k == tok::WITH || k == tok::UIDENT || k == tok::USCONST) {
+        if !matches!(cur.kind, k if k == tok::NOT || k == tok::NULLS_P || k == tok::WITH || k == tok::UIDENT || k == tok::USCONST)
+        {
             return cur;
         }
         let next = self.scanner.next_token();
         let next_kind = next.kind;
         self.lookahead = Some(next);
         if cur.kind == tok::NOT {
-            if matches!(next_kind, k if k == tok::BETWEEN || k == tok::IN_P || k == tok::LIKE || k == tok::ILIKE || k == tok::SIMILAR) {
+            if matches!(next_kind, k if k == tok::BETWEEN || k == tok::IN_P || k == tok::LIKE || k == tok::ILIKE || k == tok::SIMILAR)
+            {
                 cur.kind = tok::NOT_LA;
             }
         } else if cur.kind == tok::NULLS_P {
@@ -930,7 +1001,8 @@ impl<'a> Lexer<'a> {
             if next_kind == tok::UESCAPE {
                 let third = self.scanner.next_token();
                 if third.kind != tok::SCONST {
-                    self.scanner.warn("UESCAPE must be followed by a simple string literal");
+                    self.scanner
+                        .warn("UESCAPE must be followed by a simple string literal");
                 } else {
                     let esc = third.val.sref().as_bytes().to_vec();
                     if esc.len() != 1 || !check_uescapechar(esc[0]) {

@@ -20,9 +20,14 @@ use std::path::Path;
 use sqlright_ir::util::{find_string_in, hash_str, is_str_empty};
 use sqlright_ir::IrType;
 use sqlright_mutator::ir_wrapper;
-use sqlright_mutator::oracle::{get_random_mutated_select_stmt, remove_oracle_select_stmt_from_ir, remove_select_stmt_from_ir, AllCompRes, OraCompRes, Oracle};
+use sqlright_mutator::oracle::{
+    get_random_mutated_select_stmt, remove_oracle_select_stmt_from_ir, remove_select_stmt_from_ir,
+    AllCompRes, OraCompRes, Oracle,
+};
 use sqlright_mutator::Mutator;
-use sqlright_oracle::result::{compare_query_result, compare_query_results_cross_run, format_report, split_runs, RUN_MARKER};
+use sqlright_oracle::result::{
+    compare_query_result, compare_query_results_cross_run, format_report, split_runs, RUN_MARKER,
+};
 use sqlright_pg_parser::parse_query;
 
 use crate::config::Config;
@@ -112,7 +117,8 @@ pub struct Engine {
 impl Engine {
     /// Build the engine and fill the library from the seed directories.
     pub fn new(config: Config, rng_seed: u64) -> Result<Engine, String> {
-        let oracle = sqlright_oracle::oracle_by_name(&config.oracle).ok_or_else(|| format!("unknown oracle {}", config.oracle))?;
+        let oracle = sqlright_oracle::oracle_by_name(&config.oracle)
+            .ok_or_else(|| format!("unknown oracle {}", config.oracle))?;
         let seed = config.rng_seed.unwrap_or(rng_seed);
         let mut engine = Engine {
             mutator: Mutator::new(seed),
@@ -130,7 +136,8 @@ impl Engine {
         for dir in dirs {
             engine.load_library_dir(&dir);
         }
-        std::fs::create_dir_all(&engine.config.bug_dir).map_err(|e| format!("cannot create {}: {e}", engine.config.bug_dir.display()))?;
+        std::fs::create_dir_all(&engine.config.bug_dir)
+            .map_err(|e| format!("cannot create {}: {e}", engine.config.bug_dir.display()))?;
         Ok(engine)
     }
 
@@ -140,7 +147,10 @@ impl Engine {
             self.log(&format!("cannot read library directory {}", dir.display()));
             return;
         };
-        let mut paths: Vec<_> = entries.filter_map(|e| e.ok().map(|e| e.path())).filter(|p| p.is_file()).collect();
+        let mut paths: Vec<_> = entries
+            .filter_map(|e| e.ok().map(|e| e.path()))
+            .filter(|p| p.is_file())
+            .collect();
         paths.sort();
         let mut total = 0;
         for path in &paths {
@@ -149,7 +159,12 @@ impl Engine {
                 Err(e) => self.log(&format!("cannot read {}: {e}", path.display())),
             }
         }
-        self.log(&format!("library: {} files, {} statements from {}", paths.len(), total, dir.display()));
+        self.log(&format!(
+            "library: {} files, {} statements from {}",
+            paths.len(),
+            total,
+            dir.display()
+        ));
     }
 
     /// Add one queue entry (a saved test case) to the library, like the
@@ -160,7 +175,8 @@ impl Engine {
             return;
         };
         let stripped = self.mutator.extract_struct(&mut q.tree, q.root);
-        self.mutator.add_all_to_library(self.oracle.as_ref(), &stripped);
+        self.mutator
+            .add_all_to_library(self.oracle.as_ref(), &stripped);
     }
 
     /// The text of the first run of a test case: a queue entry of a
@@ -207,10 +223,17 @@ impl Engine {
 
         // A seed that drops more than it creates gets a schema to work on.
         let stmts = ir_wrapper::get_stmt_ir_vec(&q.tree, root);
-        let create_num = stmts.iter().filter(|s| q.tree.ty(**s) == IrType::CreateStmt).count();
-        let drop_num = stmts.iter().filter(|s| q.tree.ty(**s) == IrType::DropStmt).count();
+        let create_num = stmts
+            .iter()
+            .filter(|s| q.tree.ty(**s) == IrType::CreateStmt)
+            .count();
+        let drop_num = stmts
+            .iter()
+            .filter(|s| q.tree.ty(**s) == IrType::DropStmt)
+            .count();
         if drop_num >= create_num {
-            self.mutator.add_missing_create_table_stmt(&mut q.tree, root);
+            self.mutator
+                .add_missing_create_table_stmt(&mut q.tree, root);
         }
         let all_nodes = q.tree.all_nodes(root);
 
@@ -268,9 +291,13 @@ impl Engine {
         if self.oracle.oracle_type() != "INDEX" {
             return;
         }
-        let count = self.mutator.rng.rand_int(sqlright_oracle::index::Index::RANDOM_APPEND_COUNT + 1);
+        let count = self
+            .mutator
+            .rng
+            .rand_int(sqlright_oracle::index::Index::RANDOM_APPEND_COUNT + 1);
         for _ in 0..count {
-            let Some(stmt) = sqlright_oracle::index::Index::random_append_stmt(&mut self.mutator) else {
+            let Some(stmt) = sqlright_oracle::index::Index::random_append_stmt(&mut self.mutator)
+            else {
                 continue;
             };
             let Some(stmt_root) = stmt.root else {
@@ -278,7 +305,11 @@ impl Engine {
             };
             // After the first statement at least, so a table can exist.
             let n = ir_wrapper::get_stmt_num(&cur.tree, cur.root);
-            let pos = if n == 0 { 0 } else { 1 + self.mutator.rng.rand_int(n) };
+            let pos = if n == 0 {
+                0
+            } else {
+                1 + self.mutator.rng.rand_int(n)
+            };
             let id = cur.tree.import(&stmt, stmt_root);
             ir_wrapper::append_stmt_at_idx(&mut cur.tree, cur.root, id, pos);
         }
@@ -287,12 +318,16 @@ impl Engine {
     /// Fill in the names, apply the oracle rewrites and print the runs.
     fn instantiate(&mut self, cur: &mut sqlright_pg_parser::ParsedQuery) -> Option<TestCase> {
         self.mutator.pre_validate();
-        let (mut trees, types) = self.mutator.pre_fix_transform(self.oracle.as_ref(), &mut cur.tree, cur.root);
+        let (mut trees, types) =
+            self.mutator
+                .pre_fix_transform(self.oracle.as_ref(), &mut cur.tree, cur.root);
         for tree in trees.iter_mut() {
             let r = tree.root?;
             self.mutator.validate(tree, r);
         }
-        let runs = self.mutator.post_fix_transform(self.oracle.as_ref(), &mut trees, &types);
+        let runs = self
+            .mutator
+            .post_fix_transform(self.oracle.as_ref(), &mut trees, &types);
         let mut marked_runs = Vec::new();
         let mut unmarked_runs = Vec::new();
         for run in &runs {
@@ -303,7 +338,10 @@ impl Engine {
         if marked_runs.is_empty() || is_str_empty(&marked_runs[0]) {
             return None;
         }
-        Some(TestCase { marked_runs, unmarked_runs })
+        Some(TestCase {
+            marked_runs,
+            unmarked_runs,
+        })
     }
 
     /// Up to `max` oracle-compatible SELECTs (the C++ `get_oracle_select_stmts`).
@@ -313,7 +351,9 @@ impl Engine {
         let mut trial = 0;
         while out.len() < max && trial < max_trial {
             trial += 1;
-            if let Some(sel) = get_random_mutated_select_stmt(self.oracle.as_ref(), &mut self.mutator) {
+            if let Some(sel) =
+                get_random_mutated_select_stmt(self.oracle.as_ref(), &mut self.mutator)
+            {
                 out.push(sel);
             }
         }
@@ -352,7 +392,11 @@ impl Engine {
                 report_path = self.write_report(case, &all);
             }
         }
-        Verdict { result, all, report_path }
+        Verdict {
+            result,
+            all,
+            report_path,
+        }
     }
 
     /// The oracle verdict for the harness output of a test case. A test
@@ -401,7 +445,10 @@ impl Engine {
 
     /// Write the counters to `stats_<pid>.txt` in the bug directory.
     pub fn write_stats(&self) {
-        let path = self.config.bug_dir.join(format!("stats_{}.txt", std::process::id()));
+        let path = self
+            .config
+            .bug_dir
+            .join(format!("stats_{}.txt", std::process::id()));
         let s = &self.stats;
         let ms = &self.mutator.stats;
         let text = format!(
@@ -445,7 +492,9 @@ pub fn output_belongs_to(output: &str, input: &str) -> bool {
     let Some(rest) = first.strip_prefix(INPUT_MARKER) else {
         return true;
     };
-    u64::from_str_radix(rest.trim(), 16).map(|h| h == fnv1a(input.as_bytes())).unwrap_or(false)
+    u64::from_str_radix(rest.trim(), 16)
+        .map(|h| h == fnv1a(input.as_bytes()))
+        .unwrap_or(false)
 }
 
 /// 64-bit FNV-1a, the same function as in the harness.
@@ -462,7 +511,8 @@ pub fn fnv1a(data: &[u8]) -> u64 {
 /// runs, so that a difference proves nothing.
 pub fn is_non_deterministic(input: &str) -> bool {
     let lower = input.to_ascii_lowercase();
-    NON_DETERMINISTIC.iter().any(|f| find_string_in(&lower, f)) || input.lines().any(|l| l.trim_start().starts_with('!'))
+    NON_DETERMINISTIC.iter().any(|f| find_string_in(&lower, f))
+        || input.lines().any(|l| l.trim_start().starts_with('!'))
 }
 
 #[cfg(test)]
@@ -470,7 +520,11 @@ mod tests {
     use super::*;
 
     fn test_config(oracle: &str) -> Config {
-        let dir = std::env::temp_dir().join(format!("sqlright-engine-test-{}-{}", std::process::id(), oracle));
+        let dir = std::env::temp_dir().join(format!(
+            "sqlright-engine-test-{}-{}",
+            std::process::id(),
+            oracle
+        ));
         Config {
             oracle: oracle.to_string(),
             init_lib_dirs: Vec::new(),
@@ -496,11 +550,23 @@ mod tests {
         let cases = engine.generate_cases(seed);
         assert!(!cases.is_empty(), "no cases generated");
         let case = &cases[0];
-        assert!(case.marked_runs[0].contains("BEGIN VERI 0"), "{}", case.marked_runs[0]);
-        assert!(case.marked_runs[0].contains("CREATE TABLE v0"), "{}", case.marked_runs[0]);
+        assert!(
+            case.marked_runs[0].contains("BEGIN VERI 0"),
+            "{}",
+            case.marked_runs[0]
+        );
+        assert!(
+            case.marked_runs[0].contains("CREATE TABLE v0"),
+            "{}",
+            case.marked_runs[0]
+        );
         // Every generated case parses as a whole.
         for c in &cases {
-            assert!(parse_query(&c.marked_runs[0]).is_some(), "{}", c.marked_runs[0]);
+            assert!(
+                parse_query(&c.marked_runs[0]).is_some(),
+                "{}",
+                c.marked_runs[0]
+            );
         }
     }
 
@@ -509,8 +575,14 @@ mod tests {
         let input = "SELECT 1;\n";
         let good = format!("{INPUT_MARKER} {:016x}\n1 \n", fnv1a(input.as_bytes()));
         assert!(output_belongs_to(&good, input));
-        assert!(!output_belongs_to(&format!("{INPUT_MARKER} 0000000000000000\n"), input));
-        assert!(output_belongs_to("1 \n", input), "output without a hash line is accepted");
+        assert!(!output_belongs_to(
+            &format!("{INPUT_MARKER} 0000000000000000\n"),
+            input
+        ));
+        assert!(
+            output_belongs_to("1 \n", input),
+            "output without a hash line is accepted"
+        );
     }
 
     #[test]
@@ -525,8 +597,14 @@ mod tests {
         assert_eq!(verdict.result, OraCompRes::Fail);
         assert!(verdict.report_path.is_some());
         let again = engine.check_output(&case, output);
-        assert!(again.report_path.is_none(), "the same case is reported once");
-        let ok = engine.check_output(&case, "BEGIN VERI 0 \n2 \nEND VERI 0 \nBEGIN VERI 1 \n2 \nEND VERI 1 \n");
+        assert!(
+            again.report_path.is_none(),
+            "the same case is reported once"
+        );
+        let ok = engine.check_output(
+            &case,
+            "BEGIN VERI 0 \n2 \nEND VERI 0 \nBEGIN VERI 1 \n2 \nEND VERI 1 \n",
+        );
         assert_eq!(ok.result, OraCompRes::Pass);
     }
 }

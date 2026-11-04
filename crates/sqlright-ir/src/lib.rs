@@ -15,6 +15,7 @@
 //! that is removed from the tree stays in the arena until the tree is dropped.
 
 pub mod generated {
+    #[rustfmt::skip]
     pub mod ir_type;
 }
 pub mod util;
@@ -106,7 +107,11 @@ impl Op {
         Op::new("", middle, "")
     }
 
-    pub fn owned(prefix: impl Into<String>, middle: impl Into<String>, suffix: impl Into<String>) -> Op {
+    pub fn owned(
+        prefix: impl Into<String>,
+        middle: impl Into<String>,
+        suffix: impl Into<String>,
+    ) -> Op {
         Op {
             prefix: Cow::Owned(prefix.into()),
             middle: Cow::Owned(middle.into()),
@@ -287,7 +292,14 @@ impl IrTree {
     }
 
     /// A leaf with a numeric value, like the C++ `IR(type, int, ...)`.
-    pub fn leaf_value(&mut self, ty: IrType, value: impl Into<IrValue>, data_type: DataType, scope: i32, data_flag: DataFlag) -> IrId {
+    pub fn leaf_value(
+        &mut self,
+        ty: IrType,
+        value: impl Into<IrValue>,
+        data_type: DataType,
+        scope: i32,
+        data_flag: DataFlag,
+    ) -> IrId {
         let mut n = IrNode::new(ty);
         n.value = value.into();
         n.data_type = data_type;
@@ -530,7 +542,8 @@ impl IrTree {
 
     /// Number of nodes in the subtree.
     pub fn count_nodes(&self, id: IrId) -> usize {
-        1 + self.left(id).map_or(0, |l| self.count_nodes(l)) + self.right(id).map_or(0, |r| self.count_nodes(r))
+        1 + self.left(id).map_or(0, |l| self.count_nodes(l))
+            + self.right(id).map_or(0, |r| self.count_nodes(r))
     }
 
     // -- printing ---------------------------------------------------------------
@@ -670,7 +683,12 @@ impl IrTree {
     /// Set the role of a `qualified_name` node (its identifier). A qualified
     /// name with a right child is a `schema.name`; its first part is treated
     /// as a table name that follows another one.
-    pub fn set_qualified_name_type(&mut self, id: IrId, data_type: DataType, data_flag: DataFlag) -> bool {
+    pub fn set_qualified_name_type(
+        &mut self,
+        id: IrId,
+        data_type: DataType,
+        data_flag: DataFlag,
+    ) -> bool {
         debug_assert_eq!(self.ty(id), IrType::QualifiedName);
         let Some(iden) = self.left(id) else {
             return false;
@@ -682,7 +700,12 @@ impl IrTree {
         self.set_type(iden, data_type, data_flag)
     }
 
-    pub fn set_qualified_name_list_type(&mut self, id: IrId, data_type: DataType, data_flag: DataFlag) -> bool {
+    pub fn set_qualified_name_list_type(
+        &mut self,
+        id: IrId,
+        data_type: DataType,
+        data_flag: DataFlag,
+    ) -> bool {
         debug_assert_eq!(self.ty(id), IrType::QualifiedNameList);
         let qualified_name = match self.right(id) {
             Some(r) => r,
@@ -702,12 +725,22 @@ impl IrTree {
         true
     }
 
-    pub fn set_reloption_elem_type(&mut self, id: IrId, data_type: DataType, data_flag: DataFlag) -> bool {
+    pub fn set_reloption_elem_type(
+        &mut self,
+        id: IrId,
+        data_type: DataType,
+        data_flag: DataFlag,
+    ) -> bool {
         debug_assert_eq!(self.ty(id), IrType::ReloptionElem);
         self.set_type(id, data_type, data_flag)
     }
 
-    pub fn set_any_name_type(&mut self, id: IrId, data_type: DataType, data_flag: DataFlag) -> bool {
+    pub fn set_any_name_type(
+        &mut self,
+        id: IrId,
+        data_type: DataType,
+        data_flag: DataFlag,
+    ) -> bool {
         debug_assert_eq!(self.ty(id), IrType::AnyName);
         let Some(iden) = self.left(id) else {
             return false;
@@ -715,7 +748,12 @@ impl IrTree {
         self.set_type(iden, data_type, data_flag)
     }
 
-    pub fn set_any_name_list_type(&mut self, id: IrId, data_type: DataType, data_flag: DataFlag) -> bool {
+    pub fn set_any_name_list_type(
+        &mut self,
+        id: IrId,
+        data_type: DataType,
+        data_flag: DataFlag,
+    ) -> bool {
         debug_assert_eq!(self.ty(id), IrType::AnyNameList);
         let anyname = match self.right(id) {
             Some(r) => r,
@@ -735,7 +773,12 @@ impl IrTree {
         true
     }
 
-    pub fn set_opt_columnlist_type(&mut self, id: IrId, data_type: DataType, data_flag: DataFlag) -> bool {
+    pub fn set_opt_columnlist_type(
+        &mut self,
+        id: IrId,
+        data_type: DataType,
+        data_flag: DataFlag,
+    ) -> bool {
         debug_assert_eq!(self.ty(id), IrType::OptColumnList);
         match self.left(id) {
             Some(l) => self.set_columnlist_type(l, data_type, data_flag),
@@ -743,7 +786,12 @@ impl IrTree {
         }
     }
 
-    pub fn set_columnlist_type(&mut self, id: IrId, data_type: DataType, data_flag: DataFlag) -> bool {
+    pub fn set_columnlist_type(
+        &mut self,
+        id: IrId,
+        data_type: DataType,
+        data_flag: DataFlag,
+    ) -> bool {
         debug_assert_eq!(self.ty(id), IrType::ColumnList);
         let elem = match self.right(id) {
             Some(r) => r,
@@ -763,7 +811,12 @@ impl IrTree {
         true
     }
 
-    pub fn set_insert_columnlist_type(&mut self, id: IrId, data_type: DataType, data_flag: DataFlag) -> bool {
+    pub fn set_insert_columnlist_type(
+        &mut self,
+        id: IrId,
+        data_type: DataType,
+        data_flag: DataFlag,
+    ) -> bool {
         debug_assert_eq!(self.ty(id), IrType::InsertColumnList);
         let elem = match self.right(id) {
             Some(r) => r,
@@ -783,7 +836,12 @@ impl IrTree {
         true
     }
 
-    pub fn set_rolelist_type(&mut self, id: IrId, data_type: DataType, data_flag: DataFlag) -> bool {
+    pub fn set_rolelist_type(
+        &mut self,
+        id: IrId,
+        data_type: DataType,
+        data_flag: DataFlag,
+    ) -> bool {
         debug_assert_eq!(self.ty(id), IrType::RoleList);
         let iden = match self.right(id) {
             Some(r) => r,
@@ -801,12 +859,22 @@ impl IrTree {
         true
     }
 
-    pub fn set_generic_set_type(&mut self, id: IrId, data_type: DataType, data_flag: DataFlag) -> bool {
+    pub fn set_generic_set_type(
+        &mut self,
+        id: IrId,
+        data_type: DataType,
+        data_flag: DataFlag,
+    ) -> bool {
         debug_assert_eq!(self.ty(id), IrType::GenericSet);
         self.set_type(id, data_type, data_flag)
     }
 
-    pub fn set_opt_name_list_type(&mut self, id: IrId, data_type: DataType, data_flag: DataFlag) -> bool {
+    pub fn set_opt_name_list_type(
+        &mut self,
+        id: IrId,
+        data_type: DataType,
+        data_flag: DataFlag,
+    ) -> bool {
         debug_assert_eq!(self.ty(id), IrType::OptNameList);
         match self.left(id) {
             Some(l) => self.set_name_list_type(l, data_type, data_flag),
@@ -814,7 +882,12 @@ impl IrTree {
         }
     }
 
-    pub fn set_name_list_type(&mut self, id: IrId, data_type: DataType, data_flag: DataFlag) -> bool {
+    pub fn set_name_list_type(
+        &mut self,
+        id: IrId,
+        data_type: DataType,
+        data_flag: DataFlag,
+    ) -> bool {
         debug_assert_eq!(self.ty(id), IrType::NameList);
         match (self.left(id), self.right(id)) {
             (Some(next_list), Some(name)) => {
@@ -827,7 +900,12 @@ impl IrTree {
         }
     }
 
-    pub fn set_cluster_index_specification_type(&mut self, id: IrId, data_type: DataType, data_flag: DataFlag) -> bool {
+    pub fn set_cluster_index_specification_type(
+        &mut self,
+        id: IrId,
+        data_type: DataType,
+        data_flag: DataFlag,
+    ) -> bool {
         debug_assert_eq!(self.ty(id), IrType::ClusterIndexSpecification);
         match self.left(id) {
             Some(iden) => self.set_iden_type(iden, data_type, data_flag),
@@ -835,7 +913,12 @@ impl IrTree {
         }
     }
 
-    pub fn set_relation_expr_type(&mut self, id: IrId, data_type: DataType, data_flag: DataFlag) -> bool {
+    pub fn set_relation_expr_type(
+        &mut self,
+        id: IrId,
+        data_type: DataType,
+        data_flag: DataFlag,
+    ) -> bool {
         debug_assert_eq!(self.ty(id), IrType::RelationExpr);
         match self.left(id) {
             Some(qn) => self.set_qualified_name_type(qn, data_type, data_flag),
@@ -1083,10 +1166,21 @@ mod tests {
     #[test]
     fn to_string_joins_parts_with_spaces() {
         let mut t = IrTree::new();
-        let a = t.leaf_str(IrType::Identifier, "v0", DataType::TableName, 0, DataFlag::Use);
+        let a = t.leaf_str(
+            IrType::Identifier,
+            "v0",
+            DataType::TableName,
+            0,
+            DataFlag::Use,
+        );
         let from = t.node(IrType::FromClause, Op::new("FROM", "", ""), Some(a), None);
         let star = t.leaf(IrType::TargetEl, "*");
-        let sel = t.node(IrType::SimpleSelect, Op::new("SELECT", "", ""), Some(star), Some(from));
+        let sel = t.node(
+            IrType::SimpleSelect,
+            Op::new("SELECT", "", ""),
+            Some(star),
+            Some(from),
+        );
         assert_eq!(t.to_string(sel), "SELECT * FROM v0");
     }
 

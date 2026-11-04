@@ -12,7 +12,9 @@ pub struct Rng {
 
 impl Rng {
     pub fn seeded(seed: u64) -> Rng {
-        Rng { inner: SmallRng::seed_from_u64(seed) }
+        Rng {
+            inner: SmallRng::seed_from_u64(seed),
+        }
     }
 
     /// A random index in `0..range`, or 0 when `range` is 0.

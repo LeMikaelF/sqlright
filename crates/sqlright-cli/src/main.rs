@@ -17,7 +17,11 @@ use sqlright_mutator::oracle::OraCompRes;
 use sqlright_oracle::result::{format_report, split_runs};
 
 #[derive(Parser)]
-#[command(name = "sqlright", version, about = "SQLRight: a logic-bug fuzzer for SQL databases, as an AFL++ custom mutator")]
+#[command(
+    name = "sqlright",
+    version,
+    about = "SQLRight: a logic-bug fuzzer for SQL databases, as an AFL++ custom mutator"
+)]
 struct Cli {
     #[command(subcommand)]
     command: Command,
@@ -116,18 +120,71 @@ fn main() -> Result<()> {
     let cli = Cli::parse();
     match cli.command {
         Command::PrintIr { file } => print_ir(&file),
-        Command::Mutate { seed, oracle, lib, count, selects, rng_seed, out } => mutate(&seed, &oracle, &lib, count, selects, rng_seed, out.as_deref()),
-        Command::Replay { case, oracle, harness, raw, timeout_secs } => replay(&case, &oracle, &harness, raw, Duration::from_secs(timeout_secs)),
-        Command::Minimize { case, oracle, harness, out, max_runs, timeout_secs } => {
-            minimize_case(&case, &oracle, &harness, out.as_deref(), max_runs, Duration::from_secs(timeout_secs))
-        }
-        Command::Seeds { from, out, max_stmts, harness, timeout_secs } => seeds::build(&from, &out, max_stmts, harness.as_deref(), Duration::from_secs(timeout_secs)),
+        Command::Mutate {
+            seed,
+            oracle,
+            lib,
+            count,
+            selects,
+            rng_seed,
+            out,
+        } => mutate(
+            &seed,
+            &oracle,
+            &lib,
+            count,
+            selects,
+            rng_seed,
+            out.as_deref(),
+        ),
+        Command::Replay {
+            case,
+            oracle,
+            harness,
+            raw,
+            timeout_secs,
+        } => replay(
+            &case,
+            &oracle,
+            &harness,
+            raw,
+            Duration::from_secs(timeout_secs),
+        ),
+        Command::Minimize {
+            case,
+            oracle,
+            harness,
+            out,
+            max_runs,
+            timeout_secs,
+        } => minimize_case(
+            &case,
+            &oracle,
+            &harness,
+            out.as_deref(),
+            max_runs,
+            Duration::from_secs(timeout_secs),
+        ),
+        Command::Seeds {
+            from,
+            out,
+            max_stmts,
+            harness,
+            timeout_secs,
+        } => seeds::build(
+            &from,
+            &out,
+            max_stmts,
+            harness.as_deref(),
+            Duration::from_secs(timeout_secs),
+        ),
         Command::Run(args) => run::run(args),
     }
 }
 
 fn print_ir(file: &Path) -> Result<()> {
-    let text = std::fs::read_to_string(file).with_context(|| format!("cannot read {}", file.display()))?;
+    let text =
+        std::fs::read_to_string(file).with_context(|| format!("cannot read {}", file.display()))?;
     match sqlright_pg_parser::parse_query(&text) {
         Some(q) => {
             print!("{}", q.tree.dump(q.root));
@@ -150,7 +207,12 @@ fn print_ir(file: &Path) -> Result<()> {
 
 /// An engine for the command line: the bug directory is a temporary
 /// directory because the commands print their findings instead.
-fn make_engine(oracle: &str, libs: &[PathBuf], rng_seed: Option<u64>, select_count: usize) -> Result<Engine> {
+fn make_engine(
+    oracle: &str,
+    libs: &[PathBuf],
+    rng_seed: Option<u64>,
+    select_count: usize,
+) -> Result<Engine> {
     let scratch = std::env::temp_dir().join(format!("sqlright-cli-{}", std::process::id()));
     let config = Config {
         oracle: oracle.to_string(),
@@ -169,11 +231,23 @@ fn make_engine(oracle: &str, libs: &[PathBuf], rng_seed: Option<u64>, select_cou
 /// A test case from the text of a case file: the runs between the run markers.
 fn case_from_text(text: &str) -> TestCase {
     let runs = split_runs(text);
-    TestCase { marked_runs: runs.clone(), unmarked_runs: runs }
+    TestCase {
+        marked_runs: runs.clone(),
+        unmarked_runs: runs,
+    }
 }
 
-fn mutate(seed: &Path, oracle: &str, libs: &[PathBuf], count: usize, selects: usize, rng_seed: Option<u64>, out: Option<&Path>) -> Result<()> {
-    let text = std::fs::read_to_string(seed).with_context(|| format!("cannot read {}", seed.display()))?;
+fn mutate(
+    seed: &Path,
+    oracle: &str,
+    libs: &[PathBuf],
+    count: usize,
+    selects: usize,
+    rng_seed: Option<u64>,
+    out: Option<&Path>,
+) -> Result<()> {
+    let text =
+        std::fs::read_to_string(seed).with_context(|| format!("cannot read {}", seed.display()))?;
     let mut engine = make_engine(oracle, libs, rng_seed, selects)?;
     engine.config.max_cases_per_seed = count;
     if libs.is_empty() {
@@ -184,7 +258,10 @@ fn mutate(seed: &Path, oracle: &str, libs: &[PathBuf], count: usize, selects: us
     }
     let cases = engine.generate_cases(&text);
     if cases.is_empty() {
-        bail!("no test case could be made from {} (does it parse? run print-ir)", seed.display());
+        bail!(
+            "no test case could be made from {} (does it parse? run print-ir)",
+            seed.display()
+        );
     }
     if let Some(dir) = out {
         std::fs::create_dir_all(dir)?;
@@ -202,8 +279,15 @@ fn mutate(seed: &Path, oracle: &str, libs: &[PathBuf], count: usize, selects: us
     Ok(())
 }
 
-fn replay(case: &Path, oracle: &str, harness_bin: &Path, raw: bool, timeout: Duration) -> Result<()> {
-    let text = std::fs::read_to_string(case).with_context(|| format!("cannot read {}", case.display()))?;
+fn replay(
+    case: &Path,
+    oracle: &str,
+    harness_bin: &Path,
+    raw: bool,
+    timeout: Duration,
+) -> Result<()> {
+    let text =
+        std::fs::read_to_string(case).with_context(|| format!("cannot read {}", case.display()))?;
     let engine = make_engine(oracle, &[], None, 0)?;
     let tc = case_from_text(&text);
     let output = harness::run(harness_bin, &text, timeout)?;
@@ -222,17 +306,28 @@ fn verdict_name(v: OraCompRes) -> &'static str {
     match v {
         OraCompRes::Pass => "PASS (the results agree)",
         OraCompRes::Fail => "FAIL (the results differ: a possible logic bug)",
-        OraCompRes::Error => "ERROR (a statement failed or the case is not deterministic; nothing compared)",
+        OraCompRes::Error => {
+            "ERROR (a statement failed or the case is not deterministic; nothing compared)"
+        }
     }
 }
 
-fn minimize_case(case: &Path, oracle: &str, harness_bin: &Path, out: Option<&Path>, max_runs: usize, timeout: Duration) -> Result<()> {
-    let text = std::fs::read_to_string(case).with_context(|| format!("cannot read {}", case.display()))?;
+fn minimize_case(
+    case: &Path,
+    oracle: &str,
+    harness_bin: &Path,
+    out: Option<&Path>,
+    max_runs: usize,
+    timeout: Duration,
+) -> Result<()> {
+    let text =
+        std::fs::read_to_string(case).with_context(|| format!("cannot read {}", case.display()))?;
     let engine = make_engine(oracle, &[], None, 0)?;
     let small = minimize::minimize(&engine, harness_bin, &text, max_runs, timeout)?;
     match out {
         Some(path) => {
-            std::fs::write(path, &small).with_context(|| format!("cannot write {}", path.display()))?;
+            std::fs::write(path, &small)
+                .with_context(|| format!("cannot write {}", path.display()))?;
             eprintln!("written to {}", path.display());
         }
         None => print!("{small}"),

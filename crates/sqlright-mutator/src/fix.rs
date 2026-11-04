@@ -72,7 +72,10 @@ impl FixContext {
     }
 
     fn column_type(&self, column: &str) -> ColType {
-        self.m_column2datatype.get(column).copied().unwrap_or(ColType::Unknown)
+        self.m_column2datatype
+            .get(column)
+            .copied()
+            .unwrap_or(ColType::Unknown)
     }
 }
 
@@ -131,7 +134,12 @@ fn float_str(f: f64) -> String {
 impl Mutator {
     /// Fill in the names of one statement. `ir_to_fix_vecs` holds, for the
     /// statement and for each of its subqueries, the nodes to fill in.
-    pub fn fix_dependency(&mut self, t: &mut IrTree, stmt: IrId, ir_to_fix_vecs: &[Vec<IrId>]) -> bool {
+    pub fn fix_dependency(
+        &mut self,
+        t: &mut IrTree,
+        stmt: IrId,
+        ir_to_fix_vecs: &[Vec<IrId>],
+    ) -> bool {
         let mut fixed: HashSet<IrId> = HashSet::new();
         let mut to_drop: Vec<IrId> = Vec::new();
         let stmt_type = t.ty(stmt);
@@ -147,10 +155,14 @@ impl Mutator {
                     continue;
                 }
                 let n = t.get(id);
-                if (n.data_type == DataType::TableName || n.data_type == DataType::ForeignTableName) && n.data_flag == DataFlag::Define {
+                if (n.data_type == DataType::TableName || n.data_type == DataType::ForeignTableName)
+                    && n.data_flag == DataFlag::Define
+                {
                     let new_name = self.gen_id_name();
                     if n.data_type == DataType::ForeignTableName {
-                        self.ctx.v_create_foreign_table_names_single.push(new_name.clone());
+                        self.ctx
+                            .v_create_foreign_table_names_single
+                            .push(new_name.clone());
                     }
                     t.set_str_val(id, new_name.clone());
                     fixed.insert(id);
@@ -167,7 +179,9 @@ impl Mutator {
                 let n = t.get(id);
                 if n.data_type == DataType::TableName && n.data_flag == DataFlag::Undefine {
                     if !self.ctx.v_table_names.is_empty() {
-                        let removed = self.ctx.v_table_names[self.rng.rand_int(self.ctx.v_table_names.len())].clone();
+                        let removed = self.ctx.v_table_names
+                            [self.rng.rand_int(self.ctx.v_table_names.len())]
+                        .clone();
                         remove_value(&mut self.ctx.v_table_names, &removed);
                         remove_value(&mut self.ctx.v_table_names_single, &removed);
                         t.set_str_val(id, removed.clone());
@@ -180,15 +194,21 @@ impl Mutator {
                     } else {
                         fixed.insert(id);
                     }
-                } else if n.data_type == DataType::ForeignTableName && n.data_flag == DataFlag::Undefine {
+                } else if n.data_type == DataType::ForeignTableName
+                    && n.data_flag == DataFlag::Undefine
+                {
                     if !self.ctx.v_foreign_table_name.is_empty() {
-                        let removed = self.ctx.v_foreign_table_name[self.rng.rand_int(self.ctx.v_foreign_table_name.len())].clone();
+                        let removed = self.ctx.v_foreign_table_name
+                            [self.rng.rand_int(self.ctx.v_foreign_table_name.len())]
+                        .clone();
                         remove_value(&mut self.ctx.v_foreign_table_name, &removed);
                         remove_value(&mut self.ctx.v_table_names, &removed);
                         remove_value(&mut self.ctx.v_table_names_single, &removed);
                         t.set_str_val(id, removed.clone());
                         fixed.insert(id);
-                        if is_replace_table && !self.ctx.v_create_foreign_table_names_single.is_empty() {
+                        if is_replace_table
+                            && !self.ctx.v_create_foreign_table_names_single.is_empty()
+                        {
                             let new_table = self.ctx.v_create_foreign_table_names_single[0].clone();
                             let cols = self.ctx.m_tables.get(&removed).cloned().unwrap_or_default();
                             self.ctx.m_tables.insert(new_table, cols);
@@ -220,7 +240,10 @@ impl Mutator {
                     || ir_wrapper::is_ir_in_type(t, id, IrType::CreateForeignTableStmt_11)
                 {
                     if !self.ctx.v_table_with_partition_name.is_empty() {
-                        let name = self.ctx.v_table_with_partition_name[self.rng.rand_int(self.ctx.v_table_with_partition_name.len())].clone();
+                        let name = self.ctx.v_table_with_partition_name[self
+                            .rng
+                            .rand_int(self.ctx.v_table_with_partition_name.len())]
+                        .clone();
                         t.set_str_val(id, name);
                         fixed.insert(id);
                         continue;
@@ -229,23 +252,38 @@ impl Mutator {
                         continue;
                     }
                 }
-                if self.ctx.v_table_names.is_empty() && self.ctx.v_table_names_single.is_empty() && self.ctx.v_create_table_names_single.is_empty() {
+                if self.ctx.v_table_names.is_empty()
+                    && self.ctx.v_table_names_single.is_empty()
+                    && self.ctx.v_create_table_names_single.is_empty()
+                {
                     fixed.insert(id);
                     continue;
                 }
                 let used_name = if !self.ctx.v_table_names.is_empty() {
                     self.ctx.v_table_names[self.rng.rand_int(self.ctx.v_table_names.len())].clone()
                 } else if !self.ctx.v_table_names_single.is_empty() {
-                    self.ctx.v_table_names_single[self.rng.rand_int(self.ctx.v_table_names_single.len())].clone()
+                    self.ctx.v_table_names_single
+                        [self.rng.rand_int(self.ctx.v_table_names_single.len())]
+                    .clone()
                 } else {
-                    self.ctx.v_create_table_names_single[self.rng.rand_int(self.ctx.v_create_table_names_single.len())].clone()
+                    self.ctx.v_create_table_names_single[self
+                        .rng
+                        .rand_int(self.ctx.v_create_table_names_single.len())]
+                    .clone()
                 };
                 t.set_str_val(id, used_name.clone());
                 fixed.insert(id);
                 self.ctx.v_table_names_single.push(used_name.clone());
-                if stmt_type == IrType::CreateStmt && ir_wrapper::is_ir_in_type(t, id, IrType::TableLikeClause) {
+                if stmt_type == IrType::CreateStmt
+                    && ir_wrapper::is_ir_in_type(t, id, IrType::TableLikeClause)
+                {
                     if let Some(new_table) = self.ctx.v_create_table_names_single.first().cloned() {
-                        let cols = self.ctx.m_tables.get(&used_name).cloned().unwrap_or_default();
+                        let cols = self
+                            .ctx
+                            .m_tables
+                            .get(&used_name)
+                            .cloned()
+                            .unwrap_or_default();
                         self.ctx.m_tables.insert(new_table, cols);
                     }
                 }
@@ -277,7 +315,8 @@ impl Mutator {
                         fixed.insert(id);
                         continue;
                     }
-                    let view = self.ctx.v_view_name[self.rng.rand_int(self.ctx.v_view_name.len())].clone();
+                    let view =
+                        self.ctx.v_view_name[self.rng.rand_int(self.ctx.v_view_name.len())].clone();
                     t.set_str_val(id, view.clone());
                     fixed.insert(id);
                     remove_value(&mut self.ctx.v_view_name, &view);
@@ -289,7 +328,8 @@ impl Mutator {
                     if self.ctx.v_view_name.is_empty() {
                         continue;
                     }
-                    let view = self.ctx.v_view_name[self.rng.rand_int(self.ctx.v_view_name.len())].clone();
+                    let view =
+                        self.ctx.v_view_name[self.rng.rand_int(self.ctx.v_view_name.len())].clone();
                     t.set_str_val(id, view.clone());
                     fixed.insert(id);
                     self.ctx.v_table_names_single.push(view);
@@ -325,23 +365,33 @@ impl Mutator {
                 }
                 let mut closest = String::new();
                 if !v_with_clause_alias_table_name.is_empty() {
-                    closest = v_with_clause_alias_table_name[self.rng.rand_int(v_with_clause_alias_table_name.len())].clone();
+                    closest = v_with_clause_alias_table_name
+                        [self.rng.rand_int(v_with_clause_alias_table_name.len())]
+                    .clone();
                 } else if !self.ctx.v_table_names_single.is_empty() {
                     if alias_idx < self.ctx.v_table_names_single.len() {
                         closest = self.ctx.v_table_names_single[alias_idx].clone();
                         alias_idx += 1;
                     } else {
-                        closest = self.ctx.v_table_names_single[self.rng.rand_int(self.ctx.v_table_names_single.len())].clone();
+                        closest = self.ctx.v_table_names_single
+                            [self.rng.rand_int(self.ctx.v_table_names_single.len())]
+                        .clone();
                     }
                 } else if !self.ctx.v_create_table_names_single.is_empty() {
                     closest = self.ctx.v_create_table_names_single[0].clone();
                 } else if !self.ctx.v_table_names.is_empty() {
-                    closest = self.ctx.v_table_names[self.rng.rand_int(self.ctx.v_table_names.len())].clone();
+                    closest = self.ctx.v_table_names
+                        [self.rng.rand_int(self.ctx.v_table_names.len())]
+                    .clone();
                 }
                 let alias = self.gen_alias_name();
                 t.set_str_val(id, alias.clone());
                 if !is_bad_table_name(&closest) {
-                    self.ctx.m_table2alias_single.entry(closest).or_default().push(alias.clone());
+                    self.ctx
+                        .m_table2alias_single
+                        .entry(closest)
+                        .or_default()
+                        .push(alias.clone());
                 }
                 self.ctx.v_alias_names_single.push(alias);
                 fixed.insert(id);
@@ -353,12 +403,16 @@ impl Mutator {
                     continue;
                 }
                 // Values of an INSERT are literals, whatever the grammar says.
-                if stmt_type == IrType::InsertStmt && ir_wrapper::is_ir_in_type(t, id, IrType::ValuesClause) {
+                if stmt_type == IrType::InsertStmt
+                    && ir_wrapper::is_ir_in_type(t, id, IrType::ValuesClause)
+                {
                     t.set_type(id, DataType::Literal, DataFlag::Unknown);
                     continue;
                 }
                 let n = t.get(id);
-                if n.data_type == DataType::ColumnName && (n.data_flag == DataFlag::Define || n.data_flag == DataFlag::Replace) {
+                if n.data_type == DataType::ColumnName
+                    && (n.data_flag == DataFlag::Define || n.data_flag == DataFlag::Replace)
+                {
                     let flag = n.data_flag;
                     let new_name = self.gen_column_name();
                     t.set_str_val(id, new_name.clone());
@@ -372,12 +426,18 @@ impl Mutator {
                         if self.rng.rand_int(5) < 4 {
                             continue;
                         }
-                        closest = self.ctx.v_table_names[self.rng.rand_int(self.ctx.v_table_names.len())].clone();
+                        closest = self.ctx.v_table_names
+                            [self.rng.rand_int(self.ctx.v_table_names.len())]
+                        .clone();
                     }
                     if is_bad_table_name(&closest) {
                         continue;
                     }
-                    self.ctx.m_tables.entry(closest).or_default().push(new_name.clone());
+                    self.ctx
+                        .m_tables
+                        .entry(closest)
+                        .or_default()
+                        .push(new_name.clone());
                     if flag == DataFlag::Define {
                         let col_type = match t.parent(id).and_then(|p| t.right(p)) {
                             Some(r) if t.ty(r) == IrType::Typename => t.typename_ir_get_type(r),
@@ -394,7 +454,12 @@ impl Mutator {
                         self.ctx.m_column2datatype.insert(new_name, prev_type);
                     }
                 } else if n.data_type == DataType::ColumnName && n.data_flag == DataFlag::Undefine {
-                    let closest = self.ctx.v_table_names_single.first().cloned().unwrap_or_default();
+                    let closest = self
+                        .ctx
+                        .v_table_names_single
+                        .first()
+                        .cloned()
+                        .unwrap_or_default();
                     if is_bad_table_name(&closest) {
                         fixed.insert(id);
                         continue;
@@ -416,7 +481,9 @@ impl Mutator {
                 if fixed.contains(&id) {
                     continue;
                 }
-                if stmt_type == IrType::InsertStmt && ir_wrapper::is_ir_in_type(t, id, IrType::ValuesClause) {
+                if stmt_type == IrType::InsertStmt
+                    && ir_wrapper::is_ir_in_type(t, id, IrType::ValuesClause)
+                {
                     t.set_type(id, DataType::Literal, DataFlag::Unknown);
                     continue;
                 }
@@ -427,22 +494,33 @@ impl Mutator {
                 let ori_str = n.str_val.clone();
                 if self.v_sys_column_name.contains(&ori_str) && self.rng.rand_int(4) >= 1 {
                     continue;
-                } else if !ir_wrapper::is_ir_in_type(t, id, IrType::WithClause) && !self.ctx.v_alias_names_single.is_empty() && self.rng.rand_int(3) < 2 {
-                    let alias = self.ctx.v_alias_names_single[self.rng.rand_int(self.ctx.v_alias_names_single.len())].clone();
+                } else if !ir_wrapper::is_ir_in_type(t, id, IrType::WithClause)
+                    && !self.ctx.v_alias_names_single.is_empty()
+                    && self.rng.rand_int(3) < 2
+                {
+                    let alias = self.ctx.v_alias_names_single
+                        [self.rng.rand_int(self.ctx.v_alias_names_single.len())]
+                    .clone();
                     t.set_str_val(id, alias);
                     continue;
                 } else if self.rng.rand_int(20) < 1 {
-                    let col = self.v_sys_column_name[self.rng.rand_int(self.v_sys_column_name.len())].clone();
+                    let col = self.v_sys_column_name
+                        [self.rng.rand_int(self.v_sys_column_name.len())]
+                    .clone();
                     t.set_str_val(id, col);
                     continue;
                 }
                 let mut closest = String::new();
                 if !self.ctx.v_table_names_single.is_empty() {
-                    closest = self.ctx.v_table_names_single[self.rng.rand_int(self.ctx.v_table_names_single.len())].clone();
+                    closest = self.ctx.v_table_names_single
+                        [self.rng.rand_int(self.ctx.v_table_names_single.len())]
+                    .clone();
                 } else if !self.ctx.v_create_table_names_single.is_empty() {
                     closest = self.ctx.v_create_table_names_single[0].clone();
                 } else if !self.ctx.v_alias_names_single.is_empty() {
-                    let alias = self.ctx.v_alias_names_single[self.rng.rand_int(self.ctx.v_alias_names_single.len())].clone();
+                    let alias = self.ctx.v_alias_names_single
+                        [self.rng.rand_int(self.ctx.v_alias_names_single.len())]
+                    .clone();
                     t.set_str_val(id, alias);
                     fixed.insert(id);
                     continue;
@@ -451,11 +529,15 @@ impl Mutator {
                         fixed.insert(id);
                         continue;
                     }
-                    closest = self.ctx.v_table_names[self.rng.rand_int(self.ctx.v_table_names.len())].clone();
+                    closest = self.ctx.v_table_names
+                        [self.rng.rand_int(self.ctx.v_table_names.len())]
+                    .clone();
                 }
                 if is_bad_table_name(&closest) {
                     if !self.ctx.v_alias_names_single.is_empty() {
-                        let alias = self.ctx.v_alias_names_single[self.rng.rand_int(self.ctx.v_alias_names_single.len())].clone();
+                        let alias = self.ctx.v_alias_names_single
+                            [self.rng.rand_int(self.ctx.v_alias_names_single.len())]
+                        .clone();
                         t.set_str_val(id, alias);
                     }
                     fixed.insert(id);
@@ -481,9 +563,14 @@ impl Mutator {
                     continue;
                 }
                 let mut chosen = if !self.ctx.v_table_names_single.is_empty() {
-                    self.ctx.v_table_names_single[self.rng.rand_int(self.ctx.v_table_names_single.len())].clone()
+                    self.ctx.v_table_names_single
+                        [self.rng.rand_int(self.ctx.v_table_names_single.len())]
+                    .clone()
                 } else if !self.ctx.v_create_table_names_single.is_empty() {
-                    self.ctx.v_create_table_names_single[self.rng.rand_int(self.ctx.v_create_table_names_single.len())].clone()
+                    self.ctx.v_create_table_names_single[self
+                        .rng
+                        .rand_int(self.ctx.v_create_table_names_single.len())]
+                    .clone()
                 } else if !self.ctx.v_table_names.is_empty() {
                     self.ctx.v_table_names[self.rng.rand_int(self.ctx.v_table_names.len())].clone()
                 } else {
@@ -553,7 +640,8 @@ impl Mutator {
                             tmp = idx_names[self.rng.rand_int(idx_names.len())].clone();
                             idx_names.retain(|s| *s != tmp);
                         } else {
-                            let keys: Vec<String> = self.ctx.m_table2index.keys().cloned().collect();
+                            let keys: Vec<String> =
+                                self.ctx.m_table2index.keys().cloned().collect();
                             for key in keys {
                                 let idx_names = self.ctx.m_table2index.get_mut(&key).unwrap();
                                 if idx_names.is_empty() {
@@ -571,13 +659,19 @@ impl Mutator {
                     DataFlag::Use => {
                         let mut tmp = "y".to_string();
                         if let Some(table) = self.ctx.v_table_names_single.first().cloned() {
-                            let idx_names = self.ctx.m_table2index.get(&table).cloned().unwrap_or_default();
+                            let idx_names = self
+                                .ctx
+                                .m_table2index
+                                .get(&table)
+                                .cloned()
+                                .unwrap_or_default();
                             if idx_names.is_empty() {
                                 continue;
                             }
                             tmp = idx_names[self.rng.rand_int(idx_names.len())].clone();
                         } else {
-                            let all: Vec<Vec<String>> = self.ctx.m_table2index.values().cloned().collect();
+                            let all: Vec<Vec<String>> =
+                                self.ctx.m_table2index.values().cloned().collect();
                             for idx_names in all {
                                 if idx_names.is_empty() {
                                     continue;
@@ -606,11 +700,15 @@ impl Mutator {
                 fixed.insert(id);
                 let ori_str = t.str_val(id).to_string();
                 let ty = t.ty(id);
-                if ty == IrType::StringLiteral && !self.common_string_library.contains(&ori_str) && self.rng.rand_int(10) < 5 {
+                if ty == IrType::StringLiteral
+                    && !self.common_string_library.contains(&ori_str)
+                    && self.rng.rand_int(10) < 5
+                {
                     self.common_string_library.push(ori_str.clone());
                 }
                 let is_select = stmt_type == IrType::SelectStmt;
-                let keep_ori = (!is_select && self.rng.rand_int(100) < 99) || (is_select && self.rng.rand_int(60) < 10);
+                let keep_ori = (!is_select && self.rng.rand_int(100) < 99)
+                    || (is_select && self.rng.rand_int(60) < 10);
                 if keep_ori {
                     match ty {
                         IrType::IntLiteral => {
@@ -641,7 +739,9 @@ impl Mutator {
                 let lit_idx = cur_literal_idx as usize;
                 let mut column_type = ColType::Unknown;
                 if self.ctx.v_column_names_single.len() > lit_idx {
-                    column_type = self.ctx.column_type(&self.ctx.v_column_names_single[lit_idx]);
+                    column_type = self
+                        .ctx
+                        .column_type(&self.ctx.v_column_names_single[lit_idx]);
                 } else if let Some(first_table) = self.ctx.v_table_names_single.first() {
                     if let Some(cols) = self.ctx.m_tables.get(first_table) {
                         if cols.len() > lit_idx {
@@ -649,7 +749,8 @@ impl Mutator {
                         }
                     }
                 }
-                let keep_type = (!is_select && self.rng.rand_int(20) < 19) || (is_select && self.rng.rand_int(50) < 10);
+                let keep_type = (!is_select && self.rng.rand_int(20) < 19)
+                    || (is_select && self.rng.rand_int(50) < 10);
                 if keep_type {
                     column_type = match ty {
                         IrType::IntLiteral => ColType::Int,
@@ -659,7 +760,8 @@ impl Mutator {
                         _ => column_type,
                     };
                 }
-                let is_length = ir_wrapper::is_ir_in_type(t, id, IrType::BitWithLength) || ir_wrapper::is_ir_in_type(t, id, IrType::CharacterWithLength);
+                let is_length = ir_wrapper::is_ir_in_type(t, id, IrType::BitWithLength)
+                    || ir_wrapper::is_ir_in_type(t, id, IrType::CharacterWithLength);
                 if is_length {
                     column_type = ColType::Int;
                 }
@@ -686,14 +788,20 @@ impl Mutator {
                         n.ty = IrType::FloatLiteral;
                     }
                     ColType::Boolean => {
-                        let s = if self.rng.rand_int(100) < 50 { "TRUE" } else { "FALSE" };
+                        let s = if self.rng.rand_int(100) < 50 {
+                            "TRUE"
+                        } else {
+                            "FALSE"
+                        };
                         let n = t.get_mut(id);
                         n.str_val = s.to_string();
                         n.ty = IrType::BoolLiteral;
                     }
                     ColType::String => {
                         if !self.ctx.v_string_literals.is_empty() && self.rng.rand_int(10) < 9 {
-                            let s = self.ctx.v_string_literals[self.rng.rand_int(self.ctx.v_string_literals.len())].clone();
+                            let s = self.ctx.v_string_literals
+                                [self.rng.rand_int(self.ctx.v_string_literals.len())]
+                            .clone();
                             // The C++ kept the old node type here, so an int
                             // literal became an unquoted word.
                             let n = t.get_mut(id);
@@ -727,7 +835,9 @@ impl Mutator {
                     continue;
                 }
                 if self.rng.rand_int(5) < 4 && !self.ctx.v_saved_reloption_str.is_empty() {
-                    let s = self.ctx.v_saved_reloption_str[self.rng.rand_int(self.ctx.v_saved_reloption_str.len())].clone();
+                    let s = self.ctx.v_saved_reloption_str
+                        [self.rng.rand_int(self.ctx.v_saved_reloption_str.len())]
+                    .clone();
                     let new_node = t.leaf(IrType::ReloptionElem, s);
                     t.swap_node(stmt, id, Some(new_node));
                     to_drop.push(id);
@@ -765,7 +875,9 @@ impl Mutator {
                             if self.ctx.v_statistics_name.is_empty() {
                                 continue;
                             }
-                            let name = self.ctx.v_statistics_name[self.rng.rand_int(self.ctx.v_statistics_name.len())].clone();
+                            let name = self.ctx.v_statistics_name
+                                [self.rng.rand_int(self.ctx.v_statistics_name.len())]
+                            .clone();
                             t.set_str_val(id, name.clone());
                             fixed.insert(id);
                             remove_value(&mut self.ctx.v_statistics_name, &name);
@@ -774,7 +886,9 @@ impl Mutator {
                             if self.ctx.v_statistics_name.is_empty() {
                                 continue;
                             }
-                            let name = self.ctx.v_statistics_name[self.rng.rand_int(self.ctx.v_statistics_name.len())].clone();
+                            let name = self.ctx.v_statistics_name
+                                [self.rng.rand_int(self.ctx.v_statistics_name.len())]
+                            .clone();
                             t.set_str_val(id, name);
                             fixed.insert(id);
                         }
@@ -783,24 +897,40 @@ impl Mutator {
                 }
                 if dt == DataType::SequenceName {
                     fixed.insert(id);
-                    Self::fix_simple_name(&mut self.rng, t, id, flag, &mut self.ctx.v_sequence_name);
+                    Self::fix_simple_name(
+                        &mut self.rng,
+                        t,
+                        id,
+                        flag,
+                        &mut self.ctx.v_sequence_name,
+                    );
                 }
                 if dt == DataType::ConstraintName {
                     fixed.insert(id);
-                    Self::fix_simple_name(&mut self.rng, t, id, flag, &mut self.ctx.v_constraint_name);
+                    Self::fix_simple_name(
+                        &mut self.rng,
+                        t,
+                        id,
+                        flag,
+                        &mut self.ctx.v_constraint_name,
+                    );
                 }
             }
         }
 
         // Is the created table partitioned?
         let mut is_table_par = false;
-        for clause in ir_wrapper::get_ir_node_in_stmt_with_type(t, stmt, IrType::OptPartitionClause, false) {
+        for clause in
+            ir_wrapper::get_ir_node_in_stmt_with_type(t, stmt, IrType::OptPartitionClause, false)
+        {
             if t.prefix(clause) == "PARTITION BY" {
                 is_table_par = true;
                 break;
             }
         }
-        if !ir_wrapper::get_ir_node_in_stmt_with_type(t, stmt, IrType::PartitionSpec, false).is_empty() {
+        if !ir_wrapper::get_ir_node_in_stmt_with_type(t, stmt, IrType::PartitionSpec, false)
+            .is_empty()
+        {
             is_table_par = true;
         }
         if is_table_par {
@@ -826,8 +956,17 @@ impl Mutator {
                     && ir_wrapper::is_ir_in_type(t, id, IrType::OptInherit)
                 {
                     if let Some(new_table) = self.ctx.v_create_table_names_single.first().cloned() {
-                        let inherited = self.ctx.m_tables.get(&n.str_val).cloned().unwrap_or_default();
-                        self.ctx.m_tables.entry(new_table).or_default().extend(inherited);
+                        let inherited = self
+                            .ctx
+                            .m_tables
+                            .get(&n.str_val)
+                            .cloned()
+                            .unwrap_or_default();
+                        self.ctx
+                            .m_tables
+                            .entry(new_table)
+                            .or_default()
+                            .extend(inherited);
                     }
                 }
             }
@@ -885,7 +1024,12 @@ impl Mutator {
                         if t.data_flag(table) != DataFlag::Use {
                             continue;
                         }
-                        let source_cols = self.ctx.m_tables.get(t.str_val(table)).cloned().unwrap_or_default();
+                        let source_cols = self
+                            .ctx
+                            .m_tables
+                            .get(t.str_val(table))
+                            .cloned()
+                            .unwrap_or_default();
                         let cols = self.ctx.m_tables.entry(view_name.clone()).or_default();
                         for c in source_cols {
                             if !cols.contains(&c) {
@@ -906,7 +1050,13 @@ impl Mutator {
 
     /// Define, remove, or use a name from a plain list (sequences, constraints).
     /// Definitions keep the original name, like the C++.
-    fn fix_simple_name(rng: &mut crate::rng::Rng, t: &mut IrTree, id: IrId, flag: DataFlag, names: &mut Vec<String>) {
+    fn fix_simple_name(
+        rng: &mut crate::rng::Rng,
+        t: &mut IrTree,
+        id: IrId,
+        flag: DataFlag,
+        names: &mut Vec<String>,
+    ) {
         match flag {
             DataFlag::Define => {
                 names.push(t.str_val(id).to_string());
@@ -983,7 +1133,11 @@ impl Mutator {
         }
         let v = if self.rng.rand_int(100) < 95 {
             // The C++ parses the original with stoi, so "1.5" reads as 1.
-            let int_part: Option<i64> = ori_str.trim().split(|c: char| !c.is_ascii_digit() && c != '-').next().and_then(|s| s.parse().ok());
+            let int_part: Option<i64> = ori_str
+                .trim()
+                .split(|c: char| !c.is_ascii_digit() && c != '-')
+                .next()
+                .and_then(|s| s.parse().ok());
             match int_part {
                 None => self.rng.rand_double(0.0, f64::MAX),
                 Some(i) => {
@@ -1034,7 +1188,13 @@ mod tests {
         fn is_oracle_select_stmt(&self, t: &mut IrTree, stmt: IrId) -> bool {
             t.ty(stmt) == IrType::SelectStmt
         }
-        fn post_fix_transform_select_stmt(&self, _m: &mut Mutator, t: &mut IrTree, stmt: IrId, _run: usize) -> Vec<IrTree> {
+        fn post_fix_transform_select_stmt(
+            &self,
+            _m: &mut Mutator,
+            t: &mut IrTree,
+            stmt: IrId,
+            _run: usize,
+        ) -> Vec<IrTree> {
             vec![t.extract(stmt)]
         }
         fn compare_results(&self, _res: &mut AllCompRes) {}
@@ -1048,16 +1208,32 @@ mod tests {
         let mut q = parse_query(sql).unwrap();
         m.pre_validate();
         let (mut trees, types) = m.pre_fix_transform(&oracle, &mut q.tree, q.root);
-        assert_eq!(types, vec![StmtType::NotOracle, StmtType::NotOracle, StmtType::OracleSelect, StmtType::NotOracle]);
+        assert_eq!(
+            types,
+            vec![
+                StmtType::NotOracle,
+                StmtType::NotOracle,
+                StmtType::OracleSelect,
+                StmtType::NotOracle
+            ]
+        );
         for tree in trees.iter_mut() {
             let r = tree.root.unwrap();
             m.validate(tree, r);
         }
         let out: Vec<String> = trees.iter().map(|t| t.to_string(t.root.unwrap())).collect();
-        assert!(out[0].starts_with("CREATE TABLE v0 ( c1 INT, c2 text )"), "{}", out[0]);
+        assert!(
+            out[0].starts_with("CREATE TABLE v0 ( c1 INT, c2 text )"),
+            "{}",
+            out[0]
+        );
         assert!(out[1].starts_with("INSERT INTO v0 VALUES"), "{}", out[1]);
         assert!(out[2].contains("FROM v0"), "{}", out[2]);
-        assert!(out[2].starts_with("SELECT c1") || out[2].starts_with("SELECT c2"), "{}", out[2]);
+        assert!(
+            out[2].starts_with("SELECT c1") || out[2].starts_with("SELECT c2"),
+            "{}",
+            out[2]
+        );
         assert_eq!(out[3], "DROP TABLE v0");
         assert_eq!(m.ctx.v_table_names, Vec::<String>::new());
         let runs = m.post_fix_transform(&oracle, &mut trees, &types);

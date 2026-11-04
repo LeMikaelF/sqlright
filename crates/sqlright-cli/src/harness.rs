@@ -45,7 +45,9 @@ pub fn run(harness: &Path, case_text: &str, timeout: Duration) -> Result<String>
     let mut output = reader.join().unwrap_or_default();
     match status {
         None => output.push_str("ERROR:  the harness was killed after the timeout\n"),
-        Some(st) if !st.success() => output.push_str(&format!("ERROR:  the harness stopped with {st}\n")),
+        Some(st) if !st.success() => {
+            output.push_str(&format!("ERROR:  the harness stopped with {st}\n"))
+        }
         Some(_) => {}
     }
     let _ = std::fs::remove_dir_all(&dir);

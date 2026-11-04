@@ -56,7 +56,11 @@ pub struct RunArgs {
 
 pub fn run(args: RunArgs) -> Result<()> {
     if !sqlright_oracle::ORACLE_NAMES.contains(&args.oracle.to_ascii_uppercase().as_str()) {
-        bail!("unknown oracle {}; use one of {}", args.oracle, sqlright_oracle::ORACLE_NAMES.join(", "));
+        bail!(
+            "unknown oracle {}; use one of {}",
+            args.oracle,
+            sqlright_oracle::ORACLE_NAMES.join(", ")
+        );
     }
     let harness = absolute(&args.harness)?;
     if !harness.is_file() {
@@ -81,7 +85,11 @@ pub fn run(args: RunArgs) -> Result<()> {
 
     let mut children = Vec::new();
     for j in 0..jobs {
-        let name = if j == 0 { "main".to_string() } else { format!("s{j}") };
+        let name = if j == 0 {
+            "main".to_string()
+        } else {
+            format!("s{j}")
+        };
         let mut cmd = Command::new(&afl_fuzz);
         cmd.arg("-i").arg(&input).arg("-o").arg(&out);
         cmd.arg("-t").arg(args.timeout_ms.to_string());
@@ -125,9 +133,12 @@ pub fn run(args: RunArgs) -> Result<()> {
         }
         if !show_ui {
             let log = std::fs::File::create(log_dir.join(format!("{name}.log")))?;
-            cmd.stdout(Stdio::from(log.try_clone()?)).stderr(Stdio::from(log));
+            cmd.stdout(Stdio::from(log.try_clone()?))
+                .stderr(Stdio::from(log));
         }
-        let child = cmd.spawn().with_context(|| format!("cannot start {}", afl_fuzz.display()))?;
+        let child = cmd
+            .spawn()
+            .with_context(|| format!("cannot start {}", afl_fuzz.display()))?;
         children.push((name, child));
         if jobs > 1 {
             // The main instance must make the output directory first.
@@ -137,16 +148,32 @@ pub fn run(args: RunArgs) -> Result<()> {
     if args.dry_run {
         return Ok(());
     }
-    println!("{jobs} afl-fuzz process(es) started; logs in {}, bug reports in {}", log_dir.display(), bug_dir.display());
+    println!(
+        "{jobs} afl-fuzz process(es) started; logs in {}, bug reports in {}",
+        log_dir.display(),
+        bug_dir.display()
+    );
     let mut failed = false;
     for (name, mut child) in children {
         let status = child.wait()?;
         if !status.success() {
             failed = true;
-            eprintln!("afl-fuzz {name} stopped with {status} (see {})", log_dir.join(format!("{name}.log")).display());
+            eprintln!(
+                "afl-fuzz {name} stopped with {status} (see {})",
+                log_dir.join(format!("{name}.log")).display()
+            );
         }
     }
-    let reports = std::fs::read_dir(&bug_dir).map(|d| d.filter_map(|e| e.ok()).filter(|e| e.path().extension().map(|x| x == "txt").unwrap_or(false) && e.file_name().to_string_lossy().starts_with("bug_")).count()).unwrap_or(0);
+    let reports = std::fs::read_dir(&bug_dir)
+        .map(|d| {
+            d.filter_map(|e| e.ok())
+                .filter(|e| {
+                    e.path().extension().map(|x| x == "txt").unwrap_or(false)
+                        && e.file_name().to_string_lossy().starts_with("bug_")
+                })
+                .count()
+        })
+        .unwrap_or(0);
     println!("{reports} bug report(s) in {}", bug_dir.display());
     if failed {
         bail!("an afl-fuzz process failed");
@@ -216,7 +243,10 @@ fn find_mutator(given: Option<&Path>) -> Result<PathBuf> {
         return absolute(p);
     }
     let exe = std::env::current_exe()?;
-    let candidates = [exe.parent().map(|d| d.join("libsqlright_afl.so")), Some(PathBuf::from("target/release/libsqlright_afl.so"))];
+    let candidates = [
+        exe.parent().map(|d| d.join("libsqlright_afl.so")),
+        Some(PathBuf::from("target/release/libsqlright_afl.so")),
+    ];
     for c in candidates.into_iter().flatten() {
         if c.is_file() {
             return absolute(&c);

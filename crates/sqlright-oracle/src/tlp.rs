@@ -71,7 +71,9 @@ impl Tlp {
     /// Which kind of TLP applies to a SELECT.
     pub fn get_stmt_tlp_type(t: &IrTree, stmt: IrId) -> TlpType {
         let mut default_type = TlpType::Normal;
-        if !ir_wrapper::get_ir_node_in_stmt_with_type(t, stmt, IrType::DistinctClause, false).is_empty() {
+        if !ir_wrapper::get_ir_node_in_stmt_with_type(t, stmt, IrType::DistinctClause, false)
+            .is_empty()
+        {
             default_type = TlpType::Distinct;
         }
         for sq in ir_wrapper::get_ir_node_in_stmt_with_type(t, stmt, IrType::SetQuantifier, false) {
@@ -84,9 +86,21 @@ impl Tlp {
                 default_type = TlpType::GroupBy;
             }
         }
-        for func_name in ir_wrapper::get_ir_node_in_stmt_with_type(t, stmt, IrType::FuncName, false) {
-            let chain = ["kFuncApplication", "kFuncExpr", "kCExpr", "kAExpr", "kTargetEl", "kTargetList", "kOptTargetList", "kSimpleSelect"];
-            let matches = chain.iter().enumerate().all(|(i, name)| ir_wrapper::get_parent_type_str(t, func_name, i as i32 + 1) == *name);
+        for func_name in ir_wrapper::get_ir_node_in_stmt_with_type(t, stmt, IrType::FuncName, false)
+        {
+            let chain = [
+                "kFuncApplication",
+                "kFuncExpr",
+                "kCExpr",
+                "kAExpr",
+                "kTargetEl",
+                "kTargetList",
+                "kOptTargetList",
+                "kSimpleSelect",
+            ];
+            let matches = chain.iter().enumerate().all(|(i, name)| {
+                ir_wrapper::get_parent_type_str(t, func_name, i as i32 + 1) == *name
+            });
             if !matches {
                 continue;
             }
@@ -135,7 +149,8 @@ impl Tlp {
     /// `(p) UNION ALL (NOT (p)) UNION ALL ((p) IS NULL)` over the simple
     /// select of the statement. Returns a new tree.
     fn transform_non_aggr(t: &IrTree, stmt: IrId, is_union_all: bool) -> Option<IrTree> {
-        let simple_selects = ir_wrapper::get_ir_node_in_stmt_with_type(t, stmt, IrType::SimpleSelect, false);
+        let simple_selects =
+            ir_wrapper::get_ir_node_in_stmt_with_type(t, stmt, IrType::SimpleSelect, false);
         let src = *simple_selects.first()?;
         let wheres = ir_wrapper::get_ir_node_in_stmt_with_type(t, src, IrType::WhereClause, false);
         let where_clause = *wheres.first()?;
@@ -146,7 +161,8 @@ impl Tlp {
         let mut out = IrTree::new();
         // part 1: WHERE ( p )
         let p1 = out.import(t, src);
-        let w1 = *ir_wrapper::get_ir_node_in_stmt_with_type(&out, p1, IrType::WhereClause, false).first()?;
+        let w1 = *ir_wrapper::get_ir_node_in_stmt_with_type(&out, p1, IrType::WhereClause, false)
+            .first()?;
         let e1 = out.left(w1)?;
         let operand1 = out.node(IrType::Operand, Op::new("(", ")", ""), None, None);
         let expr1 = out.node(IrType::Expr, Op::empty(), Some(operand1), None);
@@ -155,7 +171,8 @@ impl Tlp {
 
         // part 2: WHERE ( NOT ( p ) )
         let p2 = out.import(t, src);
-        let w2 = *ir_wrapper::get_ir_node_in_stmt_with_type(&out, p2, IrType::WhereClause, false).first()?;
+        let w2 = *ir_wrapper::get_ir_node_in_stmt_with_type(&out, p2, IrType::WhereClause, false)
+            .first()?;
         let e2 = out.left(w2)?;
         let operand0 = out.node(IrType::AExpr, Op::new("(", ")", ""), None, None);
         let unary = out.node(IrType::AExpr, Op::new("NOT", "", ""), Some(operand0), None);
@@ -166,10 +183,16 @@ impl Tlp {
 
         // part 3: WHERE ( ( p ) IS NULL )
         let p3 = out.import(t, src);
-        let w3 = *ir_wrapper::get_ir_node_in_stmt_with_type(&out, p3, IrType::WhereClause, false).first()?;
+        let w3 = *ir_wrapper::get_ir_node_in_stmt_with_type(&out, p3, IrType::WhereClause, false)
+            .first()?;
         let e3 = out.left(w3)?;
         let operand3 = out.node(IrType::Operand, Op::new("(", ")", ""), None, None);
-        let unary3 = out.node(IrType::UnaryExpr, Op::new("", "IS NULL", ""), Some(operand3), None);
+        let unary3 = out.node(
+            IrType::UnaryExpr,
+            Op::new("", "IS NULL", ""),
+            Some(operand3),
+            None,
+        );
         let operand3_outer = out.node(IrType::Expr, Op::new("(", ")", ""), Some(unary3), None);
         let expr3 = out.node(IrType::Expr, Op::empty(), Some(operand3_outer), None);
         out.swap_node(p3, e3, Some(expr3));
@@ -177,20 +200,32 @@ impl Tlp {
 
         let set_op = if is_union_all { "UNION ALL" } else { "UNION" };
         let inner = out.node(IrType::Unknown, Op::new("", set_op, ""), Some(p2), Some(p3));
-        let root = out.node(IrType::Unknown, Op::new("", set_op, ""), Some(p1), Some(inner));
+        let root = out.node(
+            IrType::Unknown,
+            Op::new("", set_op, ""),
+            Some(p1),
+            Some(inner),
+        );
         out.root = Some(root);
         Some(out)
     }
 
     /// Aggregates: give the aggregate an alias, partition, and aggregate the
     /// partitions again in an outer query.
-    fn transform_aggr(t: &IrTree, stmt: IrId, is_union_all: bool, tlp_type: TlpType) -> Option<IrTree> {
+    fn transform_aggr(
+        t: &IrTree,
+        stmt: IrId,
+        is_union_all: bool,
+        tlp_type: TlpType,
+    ) -> Option<IrTree> {
         let mut work = t.extract(stmt);
         let root = work.root?;
-        let func_names = ir_wrapper::get_ir_node_in_stmt_with_type(&work, root, IrType::FuncName, false);
+        let func_names =
+            ir_wrapper::get_ir_node_in_stmt_with_type(&work, root, IrType::FuncName, false);
         let aggr_func = *func_names.first()?;
         work.left(aggr_func)?;
-        let targets = ir_wrapper::get_ir_node_in_stmt_with_type(&work, root, IrType::TargetEl, false);
+        let targets =
+            ir_wrapper::get_ir_node_in_stmt_with_type(&work, root, IrType::TargetEl, false);
         let target = *targets.first()?;
         if tlp_type != TlpType::AggrAvg {
             if work.middle(target) == "AS" {
@@ -198,15 +233,28 @@ impl Tlp {
                     work.set_str_val(iden, "aggr");
                 }
             } else {
-                let alias_id = work.leaf_str(IrType::Identifier, "aggr", DataType::AliasName, 0, DataFlag::Define);
-                let alias = work.node(IrType::TargetEl, Op::new("AS", "", ""), Some(alias_id), None);
+                let alias_id = work.leaf_str(
+                    IrType::Identifier,
+                    "aggr",
+                    DataType::AliasName,
+                    0,
+                    DataFlag::Define,
+                );
+                let alias = work.node(
+                    IrType::TargetEl,
+                    Op::new("AS", "", ""),
+                    Some(alias_id),
+                    None,
+                );
                 let res = work.node(IrType::TargetEl, Op::empty(), None, Some(alias));
                 work.swap_node(root, target, Some(res));
                 work.update_left(res, Some(target));
             }
         } else {
             // AVG: SUM(x) AS s, COUNT(x) AS c, then SUM(s)/SUM(c) outside.
-            let func_in_target = *ir_wrapper::get_ir_node_in_stmt_with_type(&work, target, IrType::FuncName, false).first()?;
+            let func_in_target =
+                *ir_wrapper::get_ir_node_in_stmt_with_type(&work, target, IrType::FuncName, false)
+                    .first()?;
             if work.target_el_is_exist_alias(target) {
                 work.target_el_set_alias(target, "c");
                 work.func_name_set_str(func_in_target, "COUNT");
@@ -214,21 +262,43 @@ impl Tlp {
                 work.target_el_set_alias(target, "s");
                 work.func_name_set_str(func_in_target, "SUM");
                 let res_0 = work.deep_copy(target);
-                let list = work.node(IrType::TargetList, Op::new("", ",", ""), Some(res_0), Some(res_1));
+                let list = work.node(
+                    IrType::TargetList,
+                    Op::new("", ",", ""),
+                    Some(res_0),
+                    Some(res_1),
+                );
                 work.swap_node(root, target, Some(list));
                 work.deep_drop(target);
             } else {
                 work.func_name_set_str(func_in_target, "SUM");
-                let alias_0 = work.leaf_str(IrType::Identifier, "s", DataType::AliasName, 0, DataFlag::Define);
+                let alias_0 = work.leaf_str(
+                    IrType::Identifier,
+                    "s",
+                    DataType::AliasName,
+                    0,
+                    DataFlag::Define,
+                );
                 let as_0 = work.node(IrType::TargetEl, Op::new("AS", "", ""), Some(alias_0), None);
                 let copy_0 = work.deep_copy(target);
                 let res_0 = work.node(IrType::TargetEl, Op::empty(), Some(copy_0), Some(as_0));
                 work.func_name_set_str(func_in_target, "COUNT");
-                let alias_1 = work.leaf_str(IrType::Identifier, "c", DataType::AliasName, 0, DataFlag::Define);
+                let alias_1 = work.leaf_str(
+                    IrType::Identifier,
+                    "c",
+                    DataType::AliasName,
+                    0,
+                    DataFlag::Define,
+                );
                 let as_1 = work.node(IrType::TargetEl, Op::new("AS", "", ""), Some(alias_1), None);
                 let copy_1 = work.deep_copy(target);
                 let res_1 = work.node(IrType::TargetEl, Op::empty(), Some(copy_1), Some(as_1));
-                let list = work.node(IrType::TargetList, Op::new("", ",", ""), Some(res_0), Some(res_1));
+                let list = work.node(
+                    IrType::TargetList,
+                    Op::new("", ",", ""),
+                    Some(res_0),
+                    Some(res_1),
+                );
                 work.swap_node(root, target, Some(list));
                 work.deep_drop(target);
             }
@@ -245,7 +315,15 @@ impl Tlp {
         let outer_stmt = ir_wrapper::get_first_stmt_from_root(&outer_q.tree, outer_q.root)?;
         let mut outer = outer_q.tree.extract(outer_stmt);
         let outer_root = outer.root?;
-        let placeholder = *ir_wrapper::get_ir_node_in_stmt_with_type_full(&outer, outer_root, IrType::SelectNoParens, true, false, true).first()?;
+        let placeholder = *ir_wrapper::get_ir_node_in_stmt_with_type_full(
+            &outer,
+            outer_root,
+            IrType::SelectNoParens,
+            true,
+            false,
+            true,
+        )
+        .first()?;
         let inner_id = outer.import(&inner, inner.root?);
         outer.swap_node(outer_root, placeholder, Some(inner_id));
         outer.deep_drop(placeholder);
@@ -277,11 +355,23 @@ impl Tlp {
         }
         // The C++ stopped at the row counts. The rows themselves must also
         // be the same multiset.
-        let mut rows_a: Vec<&str> = v_a.iter().map(|r| r.trim_end()).filter(|r| !r.is_empty()).collect();
-        let mut rows_b: Vec<&str> = v_b.iter().map(|r| r.trim_end()).filter(|r| !r.is_empty()).collect();
+        let mut rows_a: Vec<&str> = v_a
+            .iter()
+            .map(|r| r.trim_end())
+            .filter(|r| !r.is_empty())
+            .collect();
+        let mut rows_b: Vec<&str> = v_b
+            .iter()
+            .map(|r| r.trim_end())
+            .filter(|r| !r.is_empty())
+            .collect();
         rows_a.sort_unstable();
         rows_b.sort_unstable();
-        res.comp_res = if rows_a != rows_b { OraCompRes::Fail } else { OraCompRes::Pass };
+        res.comp_res = if rows_a != rows_b {
+            OraCompRes::Fail
+        } else {
+            OraCompRes::Pass
+        };
         false
     }
 
@@ -304,7 +394,11 @@ impl Tlp {
             res.comp_res = OraCompRes::Pass;
             return false;
         }
-        res.comp_res = if a != b { OraCompRes::Fail } else { OraCompRes::Pass };
+        res.comp_res = if a != b {
+            OraCompRes::Fail
+        } else {
+            OraCompRes::Pass
+        };
         false
     }
 
@@ -313,13 +407,20 @@ impl Tlp {
             res.comp_res = OraCompRes::Error;
             return true;
         }
-        let (Some(a), Some(b)) = (parse_leading_int(&res.res_str_0), parse_leading_int(&res.res_str_1)) else {
+        let (Some(a), Some(b)) = (
+            parse_leading_int(&res.res_str_0),
+            parse_leading_int(&res.res_str_1),
+        ) else {
             res.comp_res = OraCompRes::Error;
             return true;
         };
         res.res_int_0 = a;
         res.res_int_1 = b;
-        res.comp_res = if a != b { OraCompRes::Fail } else { OraCompRes::Pass };
+        res.comp_res = if a != b {
+            OraCompRes::Fail
+        } else {
+            OraCompRes::Pass
+        };
         false
     }
 }
@@ -327,7 +428,10 @@ impl Tlp {
 /// Count the rows of a result block, like the C++: newlines minus empty lines.
 fn count_non_empty(block: &str) -> i64 {
     let newlines = block.matches('\n').count() as i64;
-    let empties = string_splitter(block, '\n').iter().filter(|l| is_str_empty(l)).count() as i64;
+    let empties = string_splitter(block, '\n')
+        .iter()
+        .filter(|l| is_str_empty(l))
+        .count() as i64;
     newlines - empties
 }
 
@@ -358,28 +462,45 @@ impl Oracle for Tlp {
         if !ir_wrapper::check_node_num(t, stmt, 300) {
             return false;
         }
-        if ir_wrapper::is_exist_limit_clause(t, stmt) || ir_wrapper::is_exist_set_operator(t, stmt) {
+        if ir_wrapper::is_exist_limit_clause(t, stmt) || ir_wrapper::is_exist_set_operator(t, stmt)
+        {
             return false;
         }
         // A window function looks like an aggregate but returns one row per
         // input row, so the partitioned form cannot be compared with it.
         for ty in [IrType::OverClause, IrType::WindowClause] {
-            if ir_wrapper::get_ir_node_in_stmt_with_type_full(t, stmt, ty, false, true, true).iter().any(|&c| !t.is_empty(c)) {
+            if ir_wrapper::get_ir_node_in_stmt_with_type_full(t, stmt, ty, false, true, true)
+                .iter()
+                .any(|&c| !t.is_empty(c))
+            {
                 return false;
             }
         }
         let froms = ir_wrapper::get_ir_node_in_stmt_with_type(t, stmt, IrType::FromClause, false);
         let wheres = ir_wrapper::get_ir_node_in_stmt_with_type(t, stmt, IrType::WhereClause, false);
-        if froms.is_empty() || wheres.is_empty() || ir_wrapper::get_num_target_el_in_select_clause(t, stmt) != 1 {
+        if froms.is_empty()
+            || wheres.is_empty()
+            || ir_wrapper::get_num_target_el_in_select_clause(t, stmt) != 1
+        {
             return false;
         }
         !t.is_empty(froms[0]) && !t.is_empty(wheres[0])
     }
 
-    fn post_fix_transform_select_stmt(&self, _mutator: &mut Mutator, t: &mut IrTree, stmt: IrId, _run: usize) -> Vec<IrTree> {
+    fn post_fix_transform_select_stmt(
+        &self,
+        _mutator: &mut Mutator,
+        t: &mut IrTree,
+        stmt: IrId,
+        _run: usize,
+    ) -> Vec<IrTree> {
         t.get_mut(stmt).parent = None;
         // Keep only the first select target, in the source statement.
-        if let Some(mut target_list) = ir_wrapper::get_ir_node_in_stmt_with_type(t, stmt, IrType::TargetList, false).first().copied() {
+        if let Some(mut target_list) =
+            ir_wrapper::get_ir_node_in_stmt_with_type(t, stmt, IrType::TargetList, false)
+                .first()
+                .copied()
+        {
             while t.ty(target_list) == IrType::TargetList {
                 let Some(extra) = t.right(target_list) else {
                     break;
@@ -396,7 +517,12 @@ impl Oracle for Tlp {
         // First form: the statement without its WHERE clause.
         let mut first = t.extract(stmt);
         let first_root = first.root.expect("root");
-        let wheres = ir_wrapper::get_ir_node_in_stmt_with_type(&first, first_root, IrType::WhereClause, false);
+        let wheres = ir_wrapper::get_ir_node_in_stmt_with_type(
+            &first,
+            first_root,
+            IrType::WhereClause,
+            false,
+        );
         let Some(where_clause) = wheres.last().copied() else {
             return Vec::new();
         };
@@ -405,7 +531,9 @@ impl Oracle for Tlp {
 
         let tlp_type = Self::get_stmt_tlp_type(t, stmt);
         let second = match tlp_type {
-            TlpType::AggrAvg | TlpType::AggrMax | TlpType::AggrMin | TlpType::AggrSum => Self::transform_aggr(t, stmt, true, tlp_type),
+            TlpType::AggrAvg | TlpType::AggrMax | TlpType::AggrMin | TlpType::AggrSum => {
+                Self::transform_aggr(t, stmt, true, tlp_type)
+            }
             TlpType::Distinct | TlpType::GroupBy => Self::transform_non_aggr(t, stmt, false),
             TlpType::Having | TlpType::Normal => Self::transform_non_aggr(t, stmt, true),
             TlpType::AggrCount | TlpType::Unknown => None,
@@ -462,13 +590,25 @@ mod tests {
 
     #[test]
     fn compares_the_rows_not_only_their_number() {
-        let mut same_rows = CompRes { res_str_0: "\n1 \n2 \n\n".to_string(), res_str_1: "\n2 \n\n1 \n".to_string(), ..CompRes::default() };
+        let mut same_rows = CompRes {
+            res_str_0: "\n1 \n2 \n\n".to_string(),
+            res_str_1: "\n2 \n\n1 \n".to_string(),
+            ..CompRes::default()
+        };
         Tlp::compare_norm(&mut same_rows);
         assert_eq!(same_rows.comp_res, OraCompRes::Pass);
-        let mut other_rows = CompRes { res_str_0: "\n1 \n2 \n".to_string(), res_str_1: "\n999 \n2 \n".to_string(), ..CompRes::default() };
+        let mut other_rows = CompRes {
+            res_str_0: "\n1 \n2 \n".to_string(),
+            res_str_1: "\n999 \n2 \n".to_string(),
+            ..CompRes::default()
+        };
         Tlp::compare_norm(&mut other_rows);
         assert_eq!(other_rows.comp_res, OraCompRes::Fail);
-        let mut fewer_rows = CompRes { res_str_0: "\n1 \n2 \n".to_string(), res_str_1: "\n1 \n".to_string(), ..CompRes::default() };
+        let mut fewer_rows = CompRes {
+            res_str_0: "\n1 \n2 \n".to_string(),
+            res_str_1: "\n1 \n".to_string(),
+            ..CompRes::default()
+        };
         Tlp::compare_norm(&mut fewer_rows);
         assert_eq!(fewer_rows.comp_res, OraCompRes::Fail);
     }
@@ -476,10 +616,14 @@ mod tests {
     #[test]
     fn rejects_window_functions() {
         let tlp = Tlp;
-        let mut q = sqlright_pg_parser::parse_query("SELECT avg(c1) OVER (PARTITION BY c2) FROM v0 WHERE c1 > 0;").unwrap();
+        let mut q = sqlright_pg_parser::parse_query(
+            "SELECT avg(c1) OVER (PARTITION BY c2) FROM v0 WHERE c1 > 0;",
+        )
+        .unwrap();
         let stmt = sqlright_mutator::ir_wrapper::get_first_stmt_from_root(&q.tree, q.root).unwrap();
         assert!(!tlp.is_oracle_select_stmt(&mut q.tree, stmt));
-        let mut q = sqlright_pg_parser::parse_query("SELECT avg(c1) FROM v0 WHERE c1 > 0;").unwrap();
+        let mut q =
+            sqlright_pg_parser::parse_query("SELECT avg(c1) FROM v0 WHERE c1 > 0;").unwrap();
         let stmt = sqlright_mutator::ir_wrapper::get_first_stmt_from_root(&q.tree, q.root).unwrap();
         assert!(tlp.is_oracle_select_stmt(&mut q.tree, stmt));
     }
@@ -517,14 +661,24 @@ mod tests {
         let stmt2 = ir_wrapper::get_first_stmt_from_root(&q2.tree, q2.root).unwrap();
         let forms2 = Tlp.post_fix_transform_select_stmt(&mut m, &mut q2.tree, stmt2, 0);
         let text2 = forms2[1].to_string(forms2[1].root.unwrap());
-        assert!(text2.contains("SUM ( v1 ) AS s") && text2.contains("COUNT ( v1 ) AS c"), "{text2}");
-        assert!(text2.starts_with("SELECT sum ( s ) / sum ( c ) FROM ("), "{text2}");
+        assert!(
+            text2.contains("SUM ( v1 ) AS s") && text2.contains("COUNT ( v1 ) AS c"),
+            "{text2}"
+        );
+        assert!(
+            text2.starts_with("SELECT sum ( s ) / sum ( c ) FROM ("),
+            "{text2}"
+        );
         assert!(parse_query(&text2).is_some(), "{text2}");
     }
 
     #[test]
     fn counts_rows() {
-        let mut res = CompRes { res_str_0: "1 \n2 \n".into(), res_str_1: "1 \n2 \n3 \n".into(), ..CompRes::default() };
+        let mut res = CompRes {
+            res_str_0: "1 \n2 \n".into(),
+            res_str_1: "1 \n2 \n3 \n".into(),
+            ..CompRes::default()
+        };
         assert!(!Tlp::compare_norm(&mut res));
         assert_eq!(res.comp_res, OraCompRes::Fail);
     }

@@ -33,7 +33,11 @@ fn abort_on_panic<T>(what: &str, f: impl FnOnce() -> T) -> T {
     match catch_unwind(AssertUnwindSafe(f)) {
         Ok(v) => v,
         Err(e) => {
-            let msg = e.downcast_ref::<String>().cloned().or_else(|| e.downcast_ref::<&str>().map(|s| s.to_string())).unwrap_or_default();
+            let msg = e
+                .downcast_ref::<String>()
+                .cloned()
+                .or_else(|| e.downcast_ref::<&str>().map(|s| s.to_string()))
+                .unwrap_or_default();
             eprintln!("[sqlright] panic in {what}: {msg}");
             std::process::abort();
         }
@@ -74,7 +78,11 @@ pub extern "C" fn afl_custom_init(_afl: *mut c_void, seed: c_uint) -> *mut c_voi
         };
         engine.log("initialized");
         engine.write_stats();
-        let state = Box::new(State { engine, out_buf: Vec::new(), fuzz_calls: 0 });
+        let state = Box::new(State {
+            engine,
+            out_buf: Vec::new(),
+            fuzz_calls: 0,
+        });
         Box::into_raw(state) as *mut c_void
     })
 }
@@ -111,13 +119,18 @@ pub unsafe extern "C" fn afl_custom_queue_get(_data: *mut c_void, _filename: *co
 /// Called by AFL++ with the state pointer that `afl_custom_init` returned
 /// and with buffers that stay valid for the duration of the call.
 #[no_mangle]
-pub unsafe extern "C" fn afl_custom_fuzz_count(data: *mut c_void, buf: *const u8, buf_size: usize) -> c_uint {
+pub unsafe extern "C" fn afl_custom_fuzz_count(
+    data: *mut c_void,
+    buf: *const u8,
+    buf_size: usize,
+) -> c_uint {
     abort_on_panic("afl_custom_fuzz_count", || {
         let st = state(data);
         let seed = String::from_utf8_lossy(bytes(buf, buf_size)).into_owned();
         let n = st.engine.prepare(&seed);
         if st.engine.config.debug {
-            st.engine.log(&format!("{n} test cases for a seed of {buf_size} bytes"));
+            st.engine
+                .log(&format!("{n} test cases for a seed of {buf_size} bytes"));
         }
         n as c_uint
     })
@@ -172,7 +185,8 @@ pub unsafe extern "C" fn afl_custom_post_run(data: *mut c_void) {
         let output = std::fs::read_to_string(&st.engine.config.output_path).unwrap_or_default();
         if let Some(verdict) = st.engine.check_last_output(&output) {
             if let Some(path) = verdict.report_path {
-                st.engine.log(&format!("oracle mismatch: {}", path.display()));
+                st.engine
+                    .log(&format!("oracle mismatch: {}", path.display()));
             }
         }
     })
@@ -183,7 +197,11 @@ pub unsafe extern "C" fn afl_custom_post_run(data: *mut c_void) {
 /// Called by AFL++ with the state pointer that `afl_custom_init` returned
 /// and with buffers that stay valid for the duration of the call.
 #[no_mangle]
-pub unsafe extern "C" fn afl_custom_queue_new_entry(data: *mut c_void, filename_new_queue: *const c_char, _filename_orig_queue: *const c_char) -> u8 {
+pub unsafe extern "C" fn afl_custom_queue_new_entry(
+    data: *mut c_void,
+    filename_new_queue: *const c_char,
+    _filename_orig_queue: *const c_char,
+) -> u8 {
     abort_on_panic("afl_custom_queue_new_entry", || {
         let st = state(data);
         if let Some(path) = c_str_to_path(filename_new_queue) {
@@ -198,7 +216,10 @@ pub unsafe extern "C" fn afl_custom_queue_new_entry(data: *mut c_void, filename_
 static DESCRIPTION: &[u8] = b"sqlright\0";
 
 #[no_mangle]
-pub extern "C" fn afl_custom_describe(_data: *mut c_void, _max_description_len: usize) -> *const c_char {
+pub extern "C" fn afl_custom_describe(
+    _data: *mut c_void,
+    _max_description_len: usize,
+) -> *const c_char {
     DESCRIPTION.as_ptr() as *const c_char
 }
 
@@ -208,7 +229,11 @@ pub extern "C" fn afl_custom_describe(_data: *mut c_void, _max_description_len: 
 /// Called by AFL++ with the state pointer that `afl_custom_init` returned
 /// and with buffers that stay valid for the duration of the call.
 #[no_mangle]
-pub unsafe extern "C" fn afl_custom_init_trim(_data: *mut c_void, _buf: *mut u8, _buf_size: usize) -> c_int {
+pub unsafe extern "C" fn afl_custom_init_trim(
+    _data: *mut c_void,
+    _buf: *mut u8,
+    _buf_size: usize,
+) -> c_int {
     0
 }
 

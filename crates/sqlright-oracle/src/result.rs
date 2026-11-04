@@ -44,9 +44,17 @@ pub fn extract_query_result(res: &str, begin_sign: &str, end_sign: &str) -> Vec<
             break;
         };
         let content_start = b + begin_sign.len();
-        let cur = if e >= content_start { &res[content_start..e] } else { "" };
-        begin_idx = res[content_start..].find(begin_sign).map(|p| p + content_start);
-        end_idx = res[e + end_sign.len()..].find(end_sign).map(|p| p + e + end_sign.len());
+        let cur = if e >= content_start {
+            &res[content_start..e]
+        } else {
+            ""
+        };
+        begin_idx = res[content_start..]
+            .find(begin_sign)
+            .map(|p| p + content_start);
+        end_idx = res[e + end_sign.len()..]
+            .find(end_sign)
+            .map(|p| p + e + end_sign.len());
         if cur.contains("Error") || cur.contains("ERROR") {
             out.push("Error".to_string());
         } else {
@@ -64,7 +72,13 @@ pub fn compare_query_result(oracle: &dyn Oracle, all: &mut AllCompRes) {
         return;
     }
     let res_vecs: Vec<Vec<String>> = (0..4)
-        .map(|i| extract_query_result(&all.res_str, &format!("BEGIN VERI {i}"), &format!("END VERI {i}")))
+        .map(|i| {
+            extract_query_result(
+                &all.res_str,
+                &format!("BEGIN VERI {i}"),
+                &format!("END VERI {i}"),
+            )
+        })
         .collect();
     let max = res_vecs.iter().map(|v| v.len()).max().unwrap_or(0);
     for idx in 0..max {
@@ -137,11 +151,26 @@ pub fn format_report(oracle: &dyn Oracle, all: &AllCompRes) -> String {
         out.push_str(&all.res_str);
         out.push_str(&format!("\n\nFinal_res: {verdict}\nDetailed result: \n"));
         for (iter, res) in all.v_res.iter().enumerate() {
-            out.push_str(&format!("\n\nResult NUM: {iter} \nRESULT FLAGS: {}\n", res.comp_res.as_i32()));
-            out.push_str(&format!("First stmt res is (str): {}\nFirst stmt res is (int): {}\n", res.res_str_0, res.res_int_0));
-            out.push_str(&format!("Second stmt res is (str): {}\nSecond stmt is (int): {}\n", res.res_str_1, res.res_int_1));
-            out.push_str(&format!("Third stmt res is (str): {}\nThird stmt is (int): {}\n", res.res_str_2, res.res_int_2));
-            out.push_str(&format!("Fourth stmt res is (str): {}\nFourth stmt is (int): {}\n", res.res_str_3, res.res_int_3));
+            out.push_str(&format!(
+                "\n\nResult NUM: {iter} \nRESULT FLAGS: {}\n",
+                res.comp_res.as_i32()
+            ));
+            out.push_str(&format!(
+                "First stmt res is (str): {}\nFirst stmt res is (int): {}\n",
+                res.res_str_0, res.res_int_0
+            ));
+            out.push_str(&format!(
+                "Second stmt res is (str): {}\nSecond stmt is (int): {}\n",
+                res.res_str_1, res.res_int_1
+            ));
+            out.push_str(&format!(
+                "Third stmt res is (str): {}\nThird stmt is (int): {}\n",
+                res.res_str_2, res.res_int_2
+            ));
+            out.push_str(&format!(
+                "Fourth stmt res is (str): {}\nFourth stmt is (int): {}\n",
+                res.res_str_3, res.res_int_3
+            ));
         }
     } else {
         out.push_str("Multiple runs: \n");
@@ -154,7 +183,10 @@ pub fn format_report(oracle: &dyn Oracle, all: &AllCompRes) -> String {
         }
         out.push_str(&format!("\nFinal_res: {verdict}\nDetailed result: \n"));
         for (iter, res) in all.v_res.iter().enumerate() {
-            out.push_str(&format!("\n\nResult NUM: {iter} \nRESULT FLAGS: {}\n", res.comp_res.as_i32()));
+            out.push_str(&format!(
+                "\n\nResult NUM: {iter} \nRESULT FLAGS: {}\n",
+                res.comp_res.as_i32()
+            ));
             for (j, s) in res.v_res_str.iter().enumerate() {
                 out.push_str(&format!("Str: {s} \n"));
                 if let Some(i) = res.v_res_int.get(j) {
@@ -175,8 +207,14 @@ mod tests {
     fn extracts_blocks() {
         let out = "BEGIN VERI 0 \n3 \nEND VERI 0 \nBEGIN VERI 1 \n3 \nEND VERI 1 \nBEGIN VERI 0 \nERROR: boom\nEND VERI 0 \n";
         // Like the C++, the block keeps its newlines; only spaces are trimmed.
-        assert_eq!(extract_query_result(out, "BEGIN VERI 0", "END VERI 0"), vec!["\n3 \n", "Error"]);
-        assert_eq!(extract_query_result(out, "BEGIN VERI 1", "END VERI 1"), vec!["\n3 \n"]);
+        assert_eq!(
+            extract_query_result(out, "BEGIN VERI 0", "END VERI 0"),
+            vec!["\n3 \n", "Error"]
+        );
+        assert_eq!(
+            extract_query_result(out, "BEGIN VERI 1", "END VERI 1"),
+            vec!["\n3 \n"]
+        );
     }
 
     #[test]

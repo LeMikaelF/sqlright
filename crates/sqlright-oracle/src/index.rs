@@ -57,10 +57,15 @@ impl Index {
         let Some(target) = targets.first().copied() else {
             return IndexType::Normal;
         };
-        for func_name in ir_wrapper::get_ir_node_in_stmt_with_type(t, target, IrType::FuncName, false) {
+        for func_name in
+            ir_wrapper::get_ir_node_in_stmt_with_type(t, target, IrType::FuncName, false)
+        {
             if let Some(iden) = t.left(func_name) {
                 let name = t.str_val(iden);
-                if ["min", "max", "count", "sum", "avg"].iter().any(|a| find_string_in(name, a)) {
+                if ["min", "max", "count", "sum", "avg"]
+                    .iter()
+                    .any(|a| find_string_in(name, a))
+                {
                     return IndexType::Aggr;
                 }
             }
@@ -103,7 +108,11 @@ impl Index {
             counts.push(s.matches('\n').count() as i64 - empties);
         }
         res.v_res_int = counts.clone();
-        res.comp_res = if counts.iter().any(|c| *c != counts[0]) { OraCompRes::Fail } else { OraCompRes::Pass };
+        res.comp_res = if counts.iter().any(|c| *c != counts[0]) {
+            OraCompRes::Fail
+        } else {
+            OraCompRes::Pass
+        };
         false
     }
 
@@ -128,7 +137,11 @@ impl Index {
             }
         }
         res.v_res_int = values.clone();
-        res.comp_res = if values.iter().any(|v| *v != values[0]) { OraCompRes::Fail } else { OraCompRes::Pass };
+        res.comp_res = if values.iter().any(|v| *v != values[0]) {
+            OraCompRes::Fail
+        } else {
+            OraCompRes::Pass
+        };
         false
     }
 }
@@ -159,19 +172,32 @@ impl Oracle for Index {
         !ir_wrapper::is_exist_limit_clause(t, stmt)
     }
 
-    fn pre_fix_transform_normal_stmt(&self, _mutator: &mut Mutator, t: &mut IrTree, stmt: IrId) -> Option<IrTree> {
+    fn pre_fix_transform_normal_stmt(
+        &self,
+        _mutator: &mut Mutator,
+        t: &mut IrTree,
+        stmt: IrId,
+    ) -> Option<IrTree> {
         if !self.is_oracle_normal_stmt(t, stmt) {
             return None;
         }
         let mut copy = t.extract(stmt);
         let root = copy.root?;
-        for opt_unique in ir_wrapper::get_ir_node_in_stmt_with_type(&copy, root, IrType::OptUnique, false) {
+        for opt_unique in
+            ir_wrapper::get_ir_node_in_stmt_with_type(&copy, root, IrType::OptUnique, false)
+        {
             copy.replace_op(opt_unique, Op::empty());
         }
         Some(copy)
     }
 
-    fn post_fix_transform_normal_stmt(&self, _mutator: &mut Mutator, t: &mut IrTree, stmt: IrId, run: usize) -> Vec<IrTree> {
+    fn post_fix_transform_normal_stmt(
+        &self,
+        _mutator: &mut Mutator,
+        t: &mut IrTree,
+        stmt: IrId,
+        run: usize,
+    ) -> Vec<IrTree> {
         if run == 0 {
             return vec![t.extract(stmt)];
         }
@@ -182,7 +208,13 @@ impl Oracle for Index {
         vec![empty]
     }
 
-    fn post_fix_transform_select_stmt(&self, _mutator: &mut Mutator, t: &mut IrTree, stmt: IrId, _run: usize) -> Vec<IrTree> {
+    fn post_fix_transform_select_stmt(
+        &self,
+        _mutator: &mut Mutator,
+        t: &mut IrTree,
+        stmt: IrId,
+        _run: usize,
+    ) -> Vec<IrTree> {
         vec![t.extract(stmt)]
     }
 
@@ -226,7 +258,9 @@ mod tests {
         let mut q = parse_query("CREATE UNIQUE INDEX i0 ON v0 (c1);").unwrap();
         let stmt = ir_wrapper::get_first_stmt_from_root(&q.tree, q.root).unwrap();
         assert!(Index.is_oracle_normal_stmt(&q.tree, stmt));
-        let pre = Index.pre_fix_transform_normal_stmt(&mut m, &mut q.tree, stmt).unwrap();
+        let pre = Index
+            .pre_fix_transform_normal_stmt(&mut m, &mut q.tree, stmt)
+            .unwrap();
         let pre_root = pre.root.unwrap();
         assert_eq!(pre.to_string(pre_root), "CREATE INDEX i0 ON v0 ( c1 )");
         let mut pre = pre;
@@ -237,9 +271,14 @@ mod tests {
     #[test]
     fn compares_row_counts_across_runs() {
         let mut all = AllCompRes::default();
-        all.v_cmd_str.push("SELECT 'BEGIN VERI 0'; SELECT * FROM v0 WHERE c1 > 1; SELECT 'END VERI 0';".into());
+        all.v_cmd_str.push(
+            "SELECT 'BEGIN VERI 0'; SELECT * FROM v0 WHERE c1 > 1; SELECT 'END VERI 0';".into(),
+        );
         all.v_res_str.push("x".into());
-        let r = CompRes { v_res_str: vec!["1 \n2 \n".into(), "1 \n".into()], ..CompRes::default() };
+        let r = CompRes {
+            v_res_str: vec!["1 \n2 \n".into(), "1 \n".into()],
+            ..CompRes::default()
+        };
         all.v_res.push(r);
         Index.compare_results(&mut all);
         assert_eq!(all.final_res, Some(OraCompRes::Fail));

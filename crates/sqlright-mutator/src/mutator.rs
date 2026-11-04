@@ -198,10 +198,22 @@ impl Mutator {
         self.int_types.insert(IrType::IntLiteral);
         self.string_types.insert(IrType::StringLiteral);
         self.split_substmt_types.insert(IrType::SelectNoParens);
-        for t in [IrType::ParseToplevel, IrType::Stmtlist, IrType::Stmt, IrType::CreateStmt, IrType::DropStmt, IrType::SelectStmt, IrType::UpdateStmt, IrType::InsertStmt] {
+        for t in [
+            IrType::ParseToplevel,
+            IrType::Stmtlist,
+            IrType::Stmt,
+            IrType::CreateStmt,
+            IrType::DropStmt,
+            IrType::SelectStmt,
+            IrType::UpdateStmt,
+            IrType::InsertStmt,
+        ] {
             self.not_mutatable_types.insert(t);
         }
-        for s in ["HELLO", "WORLD", "test", "files", "music", "score", "green", "red", "right", "left", "plot", "cov", "bug", "sample"] {
+        for s in [
+            "HELLO", "WORLD", "test", "files", "music", "score", "green", "red", "right", "left",
+            "plot", "cov", "bug", "sample",
+        ] {
             self.common_string_library.push(s.to_string());
         }
         let storage: Vec<(String, DefArgType)> = [
@@ -214,7 +226,10 @@ impl Mutator {
             ("autovacuum_vacuum_threshold", DefArgType::Integer),
             ("autovacuum_vacuum_scale_factor", DefArgType::FloatingPoint),
             ("autovacuum_vacuum_insert_threshold", DefArgType::Integer),
-            ("autovacuum_vacuum_insert_scale_factor", DefArgType::FloatingPoint),
+            (
+                "autovacuum_vacuum_insert_scale_factor",
+                DefArgType::FloatingPoint,
+            ),
             ("autovacuum_analyze_scale_factor", DefArgType::FloatingPoint),
             ("autovacuum_vacuum_cost_delay", DefArgType::Integer),
             ("autovacuum_vacuum_cost_limit", DefArgType::Integer),
@@ -230,8 +245,14 @@ impl Mutator {
         .map(|(n, t)| (n.to_string(), t))
         .collect();
         self.m_reloption.insert(IrType::CreateStmt, storage);
-        self.v_aggregate_func = ["SUM", "COUNT", "MAX", "MIN", "AVG"].iter().map(|s| s.to_string()).collect();
-        self.v_sys_column_name = ["oid", "tableoid", "xmin", "cmin", "xmax", "cmax", "ctid"].iter().map(|s| s.to_string()).collect();
+        self.v_aggregate_func = ["SUM", "COUNT", "MAX", "MIN", "AVG"]
+            .iter()
+            .map(|s| s.to_string())
+            .collect();
+        self.v_sys_column_name = ["oid", "tableoid", "xmin", "cmin", "xmax", "cmax", "ctid"]
+            .iter()
+            .map(|s| s.to_string())
+            .collect();
         self.v_sys_catalogs_name = SYS_CATALOG_NAMES.iter().map(|s| s.to_string()).collect();
     }
 
@@ -240,7 +261,11 @@ impl Mutator {
     /// Add every statement of a seed file to the library. Each line is one
     /// statement. The structure of the statement is kept, the names are
     /// replaced by placeholders first (`extract_struct`).
-    pub fn init_from_file(&mut self, oracle: &dyn Oracle, path: &std::path::Path) -> std::io::Result<usize> {
+    pub fn init_from_file(
+        &mut self,
+        oracle: &dyn Oracle,
+        path: &std::path::Path,
+    ) -> std::io::Result<usize> {
         let text = std::fs::read_to_string(path)?;
         let mut added = 0;
         for line in text.lines() {
@@ -268,7 +293,10 @@ impl Mutator {
     /// Split a query into statements and add each one to the library. SELECTs
     /// the oracle accepts go to the SELECT library as well.
     pub fn add_all_to_library(&mut self, oracle: &dyn Oracle, whole_query_str: &str) {
-        if whole_query_str.chars().all(|c| c.is_whitespace() || c == '\0') {
+        if whole_query_str
+            .chars()
+            .all(|c| c.is_whitespace() || c == '\0')
+        {
             return;
         }
         for piece in string_splitter(whole_query_str, ';') {
@@ -327,11 +355,23 @@ impl Mutator {
         if node_id < 0 {
             return;
         }
-        let entry = LibEntry { query: text.clone(), node_id: node_id as usize };
-        self.real_ir_set.entry(p_type).or_default().push(entry.clone());
+        let entry = LibEntry {
+            query: text.clone(),
+            node_id: node_id as usize,
+        };
+        self.real_ir_set
+            .entry(p_type)
+            .or_default()
+            .push(entry.clone());
         if let (Some(l), Some(r)) = (q.tree.left(node), q.tree.right(node)) {
-            self.left_lib_set.entry(q.tree.ty(l)).or_default().push(entry.clone());
-            self.right_lib_set.entry(q.tree.ty(r)).or_default().push(entry);
+            self.left_lib_set
+                .entry(q.tree.ty(l))
+                .or_default()
+                .push(entry.clone());
+            self.right_lib_set
+                .entry(q.tree.ty(r))
+                .or_default()
+                .push(entry);
         }
         if let Some(l) = q.tree.left(node) {
             self.add_to_library_core(q, l, text);
@@ -351,7 +391,9 @@ impl Mutator {
     }
 
     pub fn get_ir_library_2d_hash_kstatement_size(&self) -> usize {
-        self.ir_library_2d_hash.get(&IrType::Stmt).map_or(0, |s| s.len())
+        self.ir_library_2d_hash
+            .get(&IrType::Stmt)
+            .map_or(0, |s| s.len())
     }
 
     /// Parse a library entry and return the node it points at, when the
@@ -433,7 +475,8 @@ impl Mutator {
     pub fn get_valid_str_from_lib(&mut self, oracle: &dyn Oracle) -> (String, bool) {
         loop {
             if !self.all_valid_pstr_vec.is_empty() && self.rng.rand_int(2) < 1 {
-                let s = self.all_valid_pstr_vec[self.rng.rand_int(self.all_valid_pstr_vec.len())].to_string();
+                let s = self.all_valid_pstr_vec[self.rng.rand_int(self.all_valid_pstr_vec.len())]
+                    .to_string();
                 if s.is_empty() || !crate::oracle::is_oracle_select_str(oracle, &s) {
                     continue;
                 }
@@ -757,7 +800,12 @@ impl Mutator {
 
     /// Classify every statement and apply the pre-fix transformation of the
     /// oracle. Returns one tree per statement (the statement is its root).
-    pub fn pre_fix_transform(&mut self, oracle: &dyn Oracle, t: &mut IrTree, root: IrId) -> (Vec<IrTree>, Vec<StmtType>) {
+    pub fn pre_fix_transform(
+        &mut self,
+        oracle: &dyn Oracle,
+        t: &mut IrTree,
+        root: IrId,
+    ) -> (Vec<IrTree>, Vec<StmtType>) {
         let mut trees = Vec::new();
         let mut types = Vec::new();
         for stmt in ir_wrapper::get_stmt_ir_vec(t, root) {
@@ -815,13 +863,17 @@ impl Mutator {
                 bfs.push_back(r);
             }
             if let Some(l) = t.left(node) {
-                if self.split_substmt_types.contains(&t.ty(l)) && ir_wrapper::is_in_subquery(t, stmt, l) {
+                if self.split_substmt_types.contains(&t.ty(l))
+                    && ir_wrapper::is_in_subquery(t, stmt, l)
+                {
                     res.push(l);
                     saved.push((node, true, l));
                 }
             }
             if let Some(r) = t.right(node) {
-                if self.split_substmt_types.contains(&t.ty(r)) && ir_wrapper::is_in_subquery(t, stmt, r) {
+                if self.split_substmt_types.contains(&t.ty(r))
+                    && ir_wrapper::is_in_subquery(t, stmt, r)
+                {
                     res.push(r);
                     saved.push((node, false, r));
                 }
@@ -846,7 +898,12 @@ impl Mutator {
     /// Apply the post-fix transformation of the oracle to every statement,
     /// for every run. The result is, per run, the list of (equivalent forms,
     /// statement type). Statements with no forms are left out of that run.
-    pub fn post_fix_transform(&mut self, oracle: &dyn Oracle, trees: &mut [IrTree], types: &[StmtType]) -> Vec<Vec<(Vec<IrTree>, StmtType)>> {
+    pub fn post_fix_transform(
+        &mut self,
+        oracle: &dyn Oracle,
+        trees: &mut [IrTree],
+        types: &[StmtType],
+    ) -> Vec<Vec<(Vec<IrTree>, StmtType)>> {
         let runs = oracle.mul_run_num().max(1);
         let mut all_runs = Vec::new();
         for run in 0..runs {
@@ -854,8 +911,12 @@ impl Mutator {
             for (tree, stmt_type) in trees.iter_mut().zip(types.iter()) {
                 let root = tree.root.expect("root");
                 let forms = match stmt_type {
-                    StmtType::OracleNormal => oracle.post_fix_transform_normal_stmt(self, tree, root, run),
-                    StmtType::OracleSelect => oracle.post_fix_transform_select_stmt(self, tree, root, run),
+                    StmtType::OracleNormal => {
+                        oracle.post_fix_transform_normal_stmt(self, tree, root, run)
+                    }
+                    StmtType::OracleSelect => {
+                        oracle.post_fix_transform_select_stmt(self, tree, root, run)
+                    }
                     StmtType::NotOracle => vec![tree.extract(root)],
                 };
                 if !forms.is_empty() {
@@ -898,9 +959,19 @@ impl Mutator {
         match value {
             Some(v) => {
                 let args = t.leaf(IrType::ReloptionElem, v);
-                t.node(IrType::ReloptionElem, Op::new("", "=", ""), Some(label), Some(args))
+                t.node(
+                    IrType::ReloptionElem,
+                    Op::new("", "=", ""),
+                    Some(label),
+                    Some(args),
+                )
             }
-            None => t.node(IrType::ReloptionElem, Op::new("", "", ""), Some(label), None),
+            None => t.node(
+                IrType::ReloptionElem,
+                Op::new("", "", ""),
+                Some(label),
+                None,
+            ),
         }
     }
 
@@ -917,18 +988,100 @@ pub fn parse_with_semicolon(sql: &str) -> Option<ParsedQuery> {
 }
 
 const SYS_CATALOG_NAMES: &[&str] = &[
-    "pg_aggregate", "g_am", "g_amop", "g_amproc", "g_attrdef", "g_attribute", "g_authid", "g_auth_members", "pg_cast", "pg_class",
-    "pg_collation", "pg_constraint", "pg_conversion", "pg_database", "pg_db_role_setting", "pg_default_acl", "pg_depend",
-    "pg_description", "pg_enum", "pg_event_trigger", "pg_extension", "pg_foreign_data_wrapper", "pg_foreign_server",
-    "pg_foreign_table", "pg_index", "pg_inherits", "pg_init_privs", "pg_language", "pg_largeobject", "pg_largeobject_metadata",
-    "pg_namespace", "pg_opclass", "pg_operator", "pg_opfamily", "pg_partitioned_table", "pg_policy", "pg_proc", "pg_publication",
-    "pg_publication_rel", "pg_range", "pg_replication_origin", "pg_rewrite", "pg_seclabel", "pg_sequence", "pg_shdepend",
-    "pg_shdescription", "pg_shseclabel", "pg_statistic", "pg_statistic_ext", "pg_statistic_ext_data", "pg_subscription",
-    "pg_subscription_rel", "pg_tablespace", "pg_transform", "pg_trigger", "pg_ts_config", "pg_ts_config_map", "pg_ts_dict",
-    "pg_ts_parser", "pg_ts_template", "pg_type", "pg_user_mapping", "System Views", "pg_available_extensions",
-    "pg_available_extension_versions", "pg_backend_memory_contexts", "pg_config", "pg_cursors", "pg_file_settings", "pg_group",
-    "pg_hba_file_rules", "pg_indexes", "pg_locks", "pg_matviews", "pg_policies", "pg_prepared_statements", "pg_prepared_xacts",
-    "pg_publication_tables", "pg_replication_origin_status", "pg_replication_slots", "pg_roles", "pg_rules", "pg_seclabels",
-    "pg_sequences", "pg_settings", "pg_shadow", "pg_shmem_allocations", "pg_stats", "pg_stats_ext", "pg_stats_ext_exprs",
-    "pg_tables", "pg_timezone_abbrevs", "pg_timezone_names", "pg_user", "pg_user_mappings", "pg_views",
+    "pg_aggregate",
+    "g_am",
+    "g_amop",
+    "g_amproc",
+    "g_attrdef",
+    "g_attribute",
+    "g_authid",
+    "g_auth_members",
+    "pg_cast",
+    "pg_class",
+    "pg_collation",
+    "pg_constraint",
+    "pg_conversion",
+    "pg_database",
+    "pg_db_role_setting",
+    "pg_default_acl",
+    "pg_depend",
+    "pg_description",
+    "pg_enum",
+    "pg_event_trigger",
+    "pg_extension",
+    "pg_foreign_data_wrapper",
+    "pg_foreign_server",
+    "pg_foreign_table",
+    "pg_index",
+    "pg_inherits",
+    "pg_init_privs",
+    "pg_language",
+    "pg_largeobject",
+    "pg_largeobject_metadata",
+    "pg_namespace",
+    "pg_opclass",
+    "pg_operator",
+    "pg_opfamily",
+    "pg_partitioned_table",
+    "pg_policy",
+    "pg_proc",
+    "pg_publication",
+    "pg_publication_rel",
+    "pg_range",
+    "pg_replication_origin",
+    "pg_rewrite",
+    "pg_seclabel",
+    "pg_sequence",
+    "pg_shdepend",
+    "pg_shdescription",
+    "pg_shseclabel",
+    "pg_statistic",
+    "pg_statistic_ext",
+    "pg_statistic_ext_data",
+    "pg_subscription",
+    "pg_subscription_rel",
+    "pg_tablespace",
+    "pg_transform",
+    "pg_trigger",
+    "pg_ts_config",
+    "pg_ts_config_map",
+    "pg_ts_dict",
+    "pg_ts_parser",
+    "pg_ts_template",
+    "pg_type",
+    "pg_user_mapping",
+    "System Views",
+    "pg_available_extensions",
+    "pg_available_extension_versions",
+    "pg_backend_memory_contexts",
+    "pg_config",
+    "pg_cursors",
+    "pg_file_settings",
+    "pg_group",
+    "pg_hba_file_rules",
+    "pg_indexes",
+    "pg_locks",
+    "pg_matviews",
+    "pg_policies",
+    "pg_prepared_statements",
+    "pg_prepared_xacts",
+    "pg_publication_tables",
+    "pg_replication_origin_status",
+    "pg_replication_slots",
+    "pg_roles",
+    "pg_rules",
+    "pg_seclabels",
+    "pg_sequences",
+    "pg_settings",
+    "pg_shadow",
+    "pg_shmem_allocations",
+    "pg_stats",
+    "pg_stats_ext",
+    "pg_stats_ext_exprs",
+    "pg_tables",
+    "pg_timezone_abbrevs",
+    "pg_timezone_names",
+    "pg_user",
+    "pg_user_mappings",
+    "pg_views",
 ];

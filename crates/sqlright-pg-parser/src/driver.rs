@@ -21,7 +21,11 @@ pub struct ParseError {
 
 impl std::fmt::Display for ParseError {
     fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
-        write!(f, "{} at byte {} (token {})", self.message, self.position, self.token)
+        write!(
+            f,
+            "{} at byte {} (token {})",
+            self.message, self.position, self.token
+        )
     }
 }
 
@@ -102,23 +106,36 @@ pub fn parse(sql: &str) -> Result<IrTree, ParseError> {
         let lhs = YYR1[rule] as i32;
         let top = *states.last().unwrap();
         let goto_index = YYPGOTO[(lhs - YYNTOKENS) as usize] as i32 + top;
-        let next_state = if (0..=YYLAST).contains(&goto_index) && YYCHECK[goto_index as usize] as i32 == top {
-            YYTABLE[goto_index as usize] as i32
-        } else {
-            YYDEFGOTO[(lhs - YYNTOKENS) as usize] as i32
-        };
+        let next_state =
+            if (0..=YYLAST).contains(&goto_index) && YYCHECK[goto_index as usize] as i32 == top {
+                YYTABLE[goto_index as usize] as i32
+            } else {
+                YYDEFGOTO[(lhs - YYNTOKENS) as usize] as i32
+            };
         states.push(next_state);
         values.push(value);
     }
     if tree.root.is_none() {
-        return Err(ParseError { position: 0, token: 0, message: "the grammar did not set a root".to_string() });
+        return Err(ParseError {
+            position: 0,
+            token: 0,
+            message: "the grammar did not set a root".to_string(),
+        });
     }
     Ok(tree)
 }
 
 fn syntax_error(lookahead: &Option<Token>) -> ParseError {
     match lookahead {
-        Some(t) => ParseError { position: t.start, token: t.kind, message: "syntax error".to_string() },
-        None => ParseError { position: 0, token: 0, message: "syntax error".to_string() },
+        Some(t) => ParseError {
+            position: t.start,
+            token: t.kind,
+            message: "syntax error".to_string(),
+        },
+        None => ParseError {
+            position: 0,
+            token: 0,
+            message: "syntax error".to_string(),
+        },
     }
 }

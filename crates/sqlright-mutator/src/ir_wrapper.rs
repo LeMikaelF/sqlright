@@ -80,7 +80,10 @@ fn stmtmulti_chain_full(t: &IrTree, root: IrId) -> Vec<IrId> {
 
 /// The `Stmtmulti` links that hold a statement, first to last.
 pub fn get_stmtmulti_ir_vec(t: &IrTree, root: IrId) -> Vec<IrId> {
-    stmtmulti_chain_full(t, root).into_iter().filter(|sm| get_stmt_ir_from_stmtmulti(t, *sm).is_some()).collect()
+    stmtmulti_chain_full(t, root)
+        .into_iter()
+        .filter(|sm| get_stmt_ir_from_stmtmulti(t, *sm).is_some())
+        .collect()
 }
 
 /// The statement node (for example a `SelectStmt`) that a `Stmtmulti` holds.
@@ -104,7 +107,10 @@ pub fn get_stmt_ir_from_stmtmulti(t: &IrTree, sm: IrId) -> Option<IrId> {
 
 /// The statement nodes of the query, in order.
 pub fn get_stmt_ir_vec(t: &IrTree, root: IrId) -> Vec<IrId> {
-    get_stmtmulti_ir_vec(t, root).into_iter().filter_map(|sm| get_stmt_ir_from_stmtmulti(t, sm)).collect()
+    get_stmtmulti_ir_vec(t, root)
+        .into_iter()
+        .filter_map(|sm| get_stmt_ir_from_stmtmulti(t, sm))
+        .collect()
 }
 
 pub fn get_stmt_num(t: &IrTree, root: IrId) -> usize {
@@ -247,15 +253,28 @@ pub fn get_ir_node_in_stmt_with_type_full(
     if ignore_is_subquery {
         return matching;
     }
-    matching.into_iter().filter(|id| is_in_subquery(t, stmt, *id) == is_subquery).collect()
+    matching
+        .into_iter()
+        .filter(|id| is_in_subquery(t, stmt, *id) == is_subquery)
+        .collect()
 }
 
 /// Nodes of type `ty` (suffix ignored) below `stmt`, in or out of subqueries.
-pub fn get_ir_node_in_stmt_with_type(t: &IrTree, stmt: IrId, ty: IrType, is_subquery: bool) -> Vec<IrId> {
+pub fn get_ir_node_in_stmt_with_type(
+    t: &IrTree,
+    stmt: IrId,
+    ty: IrType,
+    is_subquery: bool,
+) -> Vec<IrId> {
     get_ir_node_in_stmt_with_type_full(t, stmt, ty, is_subquery, false, true)
 }
 
-pub fn is_exist_ir_node_in_stmt_with_type(t: &IrTree, stmt: IrId, ty: IrType, is_subquery: bool) -> bool {
+pub fn is_exist_ir_node_in_stmt_with_type(
+    t: &IrTree,
+    stmt: IrId,
+    ty: IrType,
+    is_subquery: bool,
+) -> bool {
     !get_ir_node_in_stmt_with_type(t, stmt, ty, is_subquery).is_empty()
 }
 
@@ -270,7 +289,10 @@ pub fn is_in_subquery(t: &IrTree, stmt: IrId, node: IrId) -> bool {
         if ty == IrType::Stmtmulti {
             return false;
         }
-        if ty == IrType::SelectStmt && t.parent(c).is_some() && get_parent_type_str(t, c, 1) != "kStmt" {
+        if ty == IrType::SelectStmt
+            && t.parent(c).is_some()
+            && get_parent_type_str(t, c, 1) != "kStmt"
+        {
             return true;
         }
         if ty == IrType::SelectWithParens {
@@ -301,7 +323,9 @@ pub fn get_p_parent_with_a_type(t: &IrTree, node: IrId, mut depth: i32) -> Optio
     let mut cur = node;
     while let Some(parent) = t.parent(cur) {
         let parent_type = t.ty(parent);
-        if parent_type == prev_type || (parent_type != IrType::Unknown && !compare_ir_type(parent_type, prev_type)) {
+        if parent_type == prev_type
+            || (parent_type != IrType::Unknown && !compare_ir_type(parent_type, prev_type))
+        {
             prev_type = parent_type;
             depth -= 1;
             if depth <= 0 {
@@ -314,7 +338,9 @@ pub fn get_p_parent_with_a_type(t: &IrTree, node: IrId, mut depth: i32) -> Optio
 }
 
 fn is_exist_non_empty_clause(t: &IrTree, stmt: IrId, ty: IrType) -> bool {
-    get_ir_node_in_stmt_with_type(t, stmt, ty, false).into_iter().any(|c| !t.is_empty(c))
+    get_ir_node_in_stmt_with_type(t, stmt, ty, false)
+        .into_iter()
+        .any(|c| !t.is_empty(c))
 }
 
 pub fn is_exist_group_clause(t: &IrTree, stmt: IrId) -> bool {
@@ -330,7 +356,9 @@ pub fn is_exist_limit_clause(t: &IrTree, stmt: IrId) -> bool {
 }
 
 fn is_exist_set_op(t: &IrTree, stmt: IrId, ty: IrType, keyword: &str) -> bool {
-    get_ir_node_in_stmt_with_type_full(t, stmt, ty, false, false, false).into_iter().any(|n| t.middle(n) == keyword)
+    get_ir_node_in_stmt_with_type_full(t, stmt, ty, false, false, false)
+        .into_iter()
+        .any(|n| t.middle(n) == keyword)
 }
 
 pub fn is_exist_union_select(t: &IrTree, stmt: IrId) -> bool {
@@ -346,7 +374,9 @@ pub fn is_exist_except_select(t: &IrTree, stmt: IrId) -> bool {
 }
 
 pub fn is_exist_set_operator(t: &IrTree, stmt: IrId) -> bool {
-    is_exist_union_select(t, stmt) || is_exist_intersect_select(t, stmt) || is_exist_except_select(t, stmt)
+    is_exist_union_select(t, stmt)
+        || is_exist_intersect_select(t, stmt)
+        || is_exist_except_select(t, stmt)
 }
 
 /// The last `target_el` of the first select target list (one node, or none).
@@ -419,8 +449,18 @@ pub fn is_ir_in_type(t: &IrTree, sub: IrId, par_type: IrType) -> bool {
 
 /// Attach `app` as the left or right child of `parent`. With `is_replace`
 /// an existing child is dropped first.
-pub fn append_components_at_ir(t: &mut IrTree, parent: IrId, app: IrId, is_left: bool, is_replace: bool) -> bool {
-    let existing = if is_left { t.left(parent) } else { t.right(parent) };
+pub fn append_components_at_ir(
+    t: &mut IrTree,
+    parent: IrId,
+    app: IrId,
+    is_left: bool,
+    is_replace: bool,
+) -> bool {
+    let existing = if is_left {
+        t.left(parent)
+    } else {
+        t.right(parent)
+    };
     if let Some(old) = existing {
         if !is_replace {
             return false;
@@ -466,7 +506,9 @@ pub fn extract_statement(t: &IrTree, root: IrId) -> Vec<IrId> {
 
 /// False when a statement of the tree has more than `limit` nodes.
 pub fn check_node_num(t: &IrTree, root: IrId, limit: usize) -> bool {
-    extract_statement(t, root).into_iter().all(|stmt| t.count_nodes(stmt) <= limit)
+    extract_statement(t, root)
+        .into_iter()
+        .all(|stmt| t.count_nodes(stmt) <= limit)
 }
 
 #[cfg(test)]
@@ -476,7 +518,9 @@ mod tests {
 
     #[test]
     fn statement_list_round_trip() {
-        let mut q = parse_query("CREATE TABLE v0 (v1 INT); INSERT INTO v0 VALUES (1); SELECT v1 FROM v0;").unwrap();
+        let mut q =
+            parse_query("CREATE TABLE v0 (v1 INT); INSERT INTO v0 VALUES (1); SELECT v1 FROM v0;")
+                .unwrap();
         let stmts = get_stmt_ir_vec(&q.tree, q.root);
         assert_eq!(stmts.len(), 3);
         assert_eq!(q.tree.ty(stmts[0]), IrType::CreateStmt);

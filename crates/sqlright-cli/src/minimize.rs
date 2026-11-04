@@ -18,8 +18,20 @@ use crate::seeds::split_sql;
 /// The statements of every run of a test case.
 type Runs = Vec<Vec<String>>;
 
-pub fn minimize(engine: &Engine, harness_bin: &Path, text: &str, max_runs: usize, timeout: Duration) -> Result<String> {
-    let mut m = Minimizer { engine, harness_bin, timeout, runs_left: max_runs, runs_done: 0 };
+pub fn minimize(
+    engine: &Engine,
+    harness_bin: &Path,
+    text: &str,
+    max_runs: usize,
+    timeout: Duration,
+) -> Result<String> {
+    let mut m = Minimizer {
+        engine,
+        harness_bin,
+        timeout,
+        runs_left: max_runs,
+        runs_done: 0,
+    };
     let mut runs: Runs = split_runs(text).iter().map(|r| statements_of(r)).collect();
     runs.retain(|r| !r.is_empty());
     if runs.is_empty() {
@@ -33,7 +45,15 @@ pub fn minimize(engine: &Engine, harness_bin: &Path, text: &str, max_runs: usize
     m.remove_statements(&mut runs)?;
     m.shrink_statements(&mut runs)?;
     let after: usize = runs.iter().map(|r| r.len()).sum();
-    eprintln!("{before} statements -> {after}, {} harness runs{}", m.runs_done, if m.runs_left == 0 { " (budget used up)" } else { "" });
+    eprintln!(
+        "{before} statements -> {after}, {} harness runs{}",
+        m.runs_done,
+        if m.runs_left == 0 {
+            " (budget used up)"
+        } else {
+            ""
+        }
+    );
     Ok(join_runs(&runs))
 }
 
@@ -55,7 +75,10 @@ impl Minimizer<'_> {
         self.runs_left -= 1;
         self.runs_done += 1;
         let text = join_runs(runs);
-        let case = TestCase { marked_runs: split_runs(&text), unmarked_runs: Vec::new() };
+        let case = TestCase {
+            marked_runs: split_runs(&text),
+            unmarked_runs: Vec::new(),
+        };
         let output = harness::run(self.harness_bin, &text, self.timeout)?;
         let (verdict, _) = self.engine.compare(&case, &output);
         Ok(verdict == OraCompRes::Fail)
@@ -64,7 +87,11 @@ impl Minimizer<'_> {
     /// Remove whole oracle groups (a pair of result blocks for NOREC and
     /// TLP, one block for INDEX) while the case still fails.
     fn remove_oracle_groups(&mut self, runs: &mut Runs) -> Result<()> {
-        let group_size = if self.engine.oracle.mul_run_num() > 1 { 1 } else { 2 };
+        let group_size = if self.engine.oracle.mul_run_num() > 1 {
+            1
+        } else {
+            2
+        };
         loop {
             let blocks = block_numbers(&runs[0]);
             if blocks.len() <= group_size {
@@ -143,7 +170,12 @@ impl Minimizer<'_> {
         let Some(q) = parse_query(stmt) else {
             return Ok(None);
         };
-        let mut nodes: Vec<_> = q.tree.all_nodes(q.root).into_iter().filter(|&n| n != q.root).collect();
+        let mut nodes: Vec<_> = q
+            .tree
+            .all_nodes(q.root)
+            .into_iter()
+            .filter(|&n| n != q.root)
+            .collect();
         nodes.sort_by_key(|&n| std::cmp::Reverse(q.tree.count_nodes(n)));
         for node in nodes {
             let Some(mut t) = parse_query(stmt) else {
@@ -158,7 +190,17 @@ impl Minimizer<'_> {
             }
             let candidate: Runs = runs
                 .iter()
-                .map(|r| r.iter().map(|s| if s == stmt { new_text.clone() } else { s.clone() }).collect())
+                .map(|r| {
+                    r.iter()
+                        .map(|s| {
+                            if s == stmt {
+                                new_text.clone()
+                            } else {
+                                s.clone()
+                            }
+                        })
+                        .collect()
+                })
                 .collect();
             if self.still_fails(&candidate)? {
                 return Ok(Some(new_text));
@@ -173,7 +215,11 @@ impl Minimizer<'_> {
 
 /// The text of a parsed single statement, without the semicolon.
 fn single_statement_text(tree: &sqlright_ir::IrTree, root: sqlright_ir::IrId) -> String {
-    tree.to_string(root).trim().trim_end_matches(';').trim().to_string()
+    tree.to_string(root)
+        .trim()
+        .trim_end_matches(';')
+        .trim()
+        .to_string()
 }
 
 /// The statements of one run, without semicolons.
@@ -181,7 +227,18 @@ fn statements_of(run_text: &str) -> Vec<String> {
     if let Some(q) = parse_query(run_text) {
         let stmts = ir_wrapper::get_stmt_ir_vec(&q.tree, q.root);
         if !stmts.is_empty() {
-            return stmts.iter().map(|&s| q.tree.to_string(s).trim().trim_end_matches(';').trim().to_string()).filter(|s| !s.is_empty()).collect();
+            return stmts
+                .iter()
+                .map(|&s| {
+                    q.tree
+                        .to_string(s)
+                        .trim()
+                        .trim_end_matches(';')
+                        .trim()
+                        .to_string()
+                })
+                .filter(|s| !s.is_empty())
+                .collect();
         }
     }
     split_sql(run_text)
@@ -217,7 +274,11 @@ fn marker(stmt: &str) -> Option<(bool, usize)> {
 
 /// The block numbers of a run, in order.
 fn block_numbers(run: &[String]) -> Vec<usize> {
-    run.iter().filter_map(|s| marker(s)).filter(|(begin, _)| *begin).map(|(_, n)| n).collect()
+    run.iter()
+        .filter_map(|s| marker(s))
+        .filter(|(begin, _)| *begin)
+        .map(|(_, n)| n)
+        .collect()
 }
 
 /// The run without the blocks with these numbers (markers included).
@@ -249,7 +310,10 @@ fn renumber_blocks(runs: &mut Runs) {
         for s in run.iter_mut() {
             if let Some((begin, n)) = marker(s) {
                 if let Some(new) = old_numbers.iter().position(|&o| o == n) {
-                    *s = format!("SELECT '{} VERI {new}'", if begin { "BEGIN" } else { "END" });
+                    *s = format!(
+                        "SELECT '{} VERI {new}'",
+                        if begin { "BEGIN" } else { "END" }
+                    );
                 }
             }
         }
@@ -286,20 +350,52 @@ mod tests {
 
     #[test]
     fn finds_and_renumbers_result_blocks() {
-        let run: Vec<String> = ["CREATE TABLE v0 (c1 INT)", "SELECT 'BEGIN VERI 0'", "SELECT 1", "SELECT 'END VERI 0'", "SELECT 'BEGIN VERI 1'", "SELECT 2", "SELECT 'END VERI 1'", "SELECT 'BEGIN VERI 2'", "SELECT 3", "SELECT 'END VERI 2'", "SELECT 'BEGIN VERI 3'", "SELECT 4", "SELECT 'END VERI 3'"]
-            .iter()
-            .map(|s| s.to_string())
-            .collect();
+        let run: Vec<String> = [
+            "CREATE TABLE v0 (c1 INT)",
+            "SELECT 'BEGIN VERI 0'",
+            "SELECT 1",
+            "SELECT 'END VERI 0'",
+            "SELECT 'BEGIN VERI 1'",
+            "SELECT 2",
+            "SELECT 'END VERI 1'",
+            "SELECT 'BEGIN VERI 2'",
+            "SELECT 3",
+            "SELECT 'END VERI 2'",
+            "SELECT 'BEGIN VERI 3'",
+            "SELECT 4",
+            "SELECT 'END VERI 3'",
+        ]
+        .iter()
+        .map(|s| s.to_string())
+        .collect();
         assert_eq!(block_numbers(&run), vec![0, 1, 2, 3]);
         assert_eq!(free_statement_indexes(&run), vec![0]);
         let mut runs = vec![remove_blocks(&run, &[0, 1])];
         renumber_blocks(&mut runs);
-        assert_eq!(runs[0], vec!["CREATE TABLE v0 (c1 INT)", "SELECT 'BEGIN VERI 0'", "SELECT 3", "SELECT 'END VERI 0'", "SELECT 'BEGIN VERI 1'", "SELECT 4", "SELECT 'END VERI 1'"]);
+        assert_eq!(
+            runs[0],
+            vec![
+                "CREATE TABLE v0 (c1 INT)",
+                "SELECT 'BEGIN VERI 0'",
+                "SELECT 3",
+                "SELECT 'END VERI 0'",
+                "SELECT 'BEGIN VERI 1'",
+                "SELECT 4",
+                "SELECT 'END VERI 1'"
+            ]
+        );
     }
 
     #[test]
     fn splits_a_run_into_statements() {
         let stmts = statements_of("CREATE TABLE v0 ( c1 INT ); \nSELECT 'BEGIN VERI 0'; \nSELECT count ( * ) FROM v0 WHERE c1 = 1; \n");
-        assert_eq!(stmts, vec!["CREATE TABLE v0 ( c1 INT )", "SELECT 'BEGIN VERI 0'", "SELECT count ( * ) FROM v0 WHERE c1 = 1"]);
+        assert_eq!(
+            stmts,
+            vec![
+                "CREATE TABLE v0 ( c1 INT )",
+                "SELECT 'BEGIN VERI 0'",
+                "SELECT count ( * ) FROM v0 WHERE c1 = 1"
+            ]
+        );
     }
 }
