@@ -9,14 +9,15 @@ printf '<sql>' > repro.sql
 crates/sqlright-harness-tursopg/target/release/sqlright-harness-tursopg --replay repro.sql
 ```
 
-The list is for the turso team to turn into issues. SQLRight does not fix
-turso bugs.
+SQLRight does not fix turso bugs. Issues were opened on 2026-11-04 for the
+findings that no existing issue covered: #11385 (finding 1), #11386
+(finding 4), #11387 (findings 2, 3 and 5 together) and #11388 (finding 6).
 
-## 1. Crash: two-argument extension aggregate in a GROUP BY query
+## 1. Crash: extension aggregate in a GROUP BY query
 
-`percentile_cont` with two column arguments inside a `GROUP BY` query
+`percentile_cont` (an extension aggregate) inside a `GROUP BY` query
 panics with a slice index error in `core/ext/function.rs`
-(`ExtFunc::step_aggregate`, `NativeAggregate`):
+(`ExtFunc::step_aggregate`, the `Self::Aggregate` branch):
 
 ```sql
 CREATE TABLE t(a float8);
@@ -26,15 +27,17 @@ SELECT percentile_cont(a, a) FROM t GROUP BY a;
 
 ```text
 thread 'main' panicked at core/ext/function.rs:111:45:
-range end index 28 out of range for slice of length 27
+range end index 16 out of range for slice of length 15
 ```
 
-The same query without `GROUP BY` returns `0.5`, and
-`SELECT percentile_cont(0.5, a) FROM t GROUP BY a` works too. The crash
-needs two column arguments and a `GROUP BY`. The register range of the
-aggregate arguments (`registers[start_reg..start_reg + argc]`) goes past
-the end of the register file, so the planner gives the aggregate fewer
-argument registers than `argc` in the grouped path.
+The index numbers in the message change with the program. The same query
+without `GROUP BY` returns `0.5`. `SELECT percentile_cont(0.5, a) FROM t
+GROUP BY a` panics too, so the crash needs the extension aggregate and a
+`GROUP BY`, not two column arguments. The register range of the aggregate
+arguments (`registers[start_reg..start_reg + aggregate.argc]`) goes past
+the end of the register file in the grouped path.
+
+Issue: https://github.com/tursodatabase/turso/issues/11385
 
 Found by: the AFL++ dry run on a seed from the PostgreSQL regression test
 `aggregates.sql` (the original statement is
@@ -62,6 +65,8 @@ times because one library statement had the predicate below (bug 3), and
 the rows. The NoREC rewrite now uses `CASE WHEN`, so the oracle no longer
 depends on strict boolean typing.
 
+Issue: https://github.com/tursodatabase/turso/issues/11387 (with findings 3 and 5)
+
 ## 3. Bit shift with an array operand is accepted
 
 PostgreSQL has no `integer << integer[]` operator. tursopg evaluates it
@@ -73,6 +78,9 @@ SELECT 5 << array_cat(ARRAY[[2, 4], [4, 10]], ARRAY[1, 2]);     -- tursopg: 5   
 ```
 
 Found by: the NoREC oracle (see bug 2).
+
+Issue: https://github.com/tursodatabase/turso/issues/11387 (with findings 2 and 5).
+Related: https://github.com/tursodatabase/turso/issues/11368 covers `+`, `-` and `*` on arrays.
 
 ## 4. Index lookup and expression disagree on a `date` primary key
 
@@ -103,6 +111,10 @@ value`; without the index the same query returns 0 rows.
 Found by: the NoREC oracle, round 3 (the only report of that round that
 was not a transaction-marker false positive).
 
+Issue: https://github.com/tursodatabase/turso/issues/11386.
+Related: https://github.com/tursodatabase/turso/issues/11011 (the `c1 = 'abc'` case) and
+https://github.com/tursodatabase/turso/issues/11314 (tracking issue for comparisons and index lookups).
+
 ## 5. A column that is neither grouped nor aggregated is accepted with GROUP BY
 
 PostgreSQL rejects a select target that is not in the GROUP BY clause and
@@ -123,6 +135,9 @@ SELECT c6 FROM v4 WHERE c6 = 30 GROUP BY c5;          -- tursopg: 30
 Found by: the TLP oracle, round 4 (two reports). The TLP oracle now takes
 a grouped SELECT only when its target is one of the GROUP BY expressions.
 
+Issue: https://github.com/tursodatabase/turso/issues/11387 (with findings 2 and 3).
+Related: https://github.com/tursodatabase/turso/issues/5709 asks for an option that enforces this.
+
 ## 6. avg() over integers returns double precision
 
 PostgreSQL computes `avg` over `integer` or `bigint` as `numeric`, so the
@@ -138,6 +153,9 @@ SELECT sum(c) / count(c) FROM t;  -- tursopg: -2773227799603160576
 Found by: the TLP oracle, round 5 (90 reports with the same two-way
 print of one value). The TLP aggregate comparison now compares numbers
 with a relative tolerance.
+
+Issue: https://github.com/tursodatabase/turso/issues/11388.
+Related: https://github.com/tursodatabase/turso/issues/9605 covers `sum()` and `avg()` of `numeric(p,s)` columns.
 
 ## Campaign log
 
