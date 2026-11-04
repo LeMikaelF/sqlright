@@ -153,11 +153,13 @@ impl Index {
 }
 
 fn has_window_function(t: &IrTree, stmt: IrId) -> bool {
-    [IrType::OverClause, IrType::WindowClause].iter().any(|&ty| {
-        ir_wrapper::get_ir_node_in_stmt_with_type_full(t, stmt, ty, false, true, true)
-            .iter()
-            .any(|&c| !t.is_empty(c))
-    })
+    [IrType::OverClause, IrType::WindowClause]
+        .iter()
+        .any(|&ty| {
+            ir_wrapper::get_ir_node_in_stmt_with_type_full(t, stmt, ty, false, true, true)
+                .iter()
+                .any(|&c| !t.is_empty(c))
+        })
 }
 
 impl Oracle for Index {

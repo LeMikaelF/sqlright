@@ -16,7 +16,6 @@ use sqlright_mutator::oracle::{AllCompRes, CompRes, OraCompRes, Oracle};
 use sqlright_mutator::Mutator;
 use sqlright_pg_parser::parse_query;
 
-
 pub struct Tlp;
 
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]

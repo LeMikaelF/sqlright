@@ -40,6 +40,9 @@ pub struct RunArgs {
     /// The time limit for one test case, in milliseconds (afl-fuzz `-t`).
     #[arg(long, default_value_t = 20000)]
     pub timeout_ms: u64,
+    /// The memory limit of the harness, in MB (afl-fuzz `-m`). 0 means no limit.
+    #[arg(long, default_value_t = 4096)]
+    pub mem_mb: u64,
     /// How many oracle SELECTs to add to each test case.
     #[arg(long, default_value_t = 10)]
     pub selects: usize,
@@ -93,7 +96,11 @@ pub fn run(args: RunArgs) -> Result<()> {
         let mut cmd = Command::new(&afl_fuzz);
         cmd.arg("-i").arg(&input).arg("-o").arg(&out);
         cmd.arg("-t").arg(args.timeout_ms.to_string());
-        cmd.arg("-m").arg("none");
+        if args.mem_mb == 0 {
+            cmd.arg("-m").arg("none");
+        } else {
+            cmd.arg("-m").arg(args.mem_mb.to_string());
+        }
         if let Some(t) = args.time {
             cmd.arg("-V").arg(t.to_string());
         }
