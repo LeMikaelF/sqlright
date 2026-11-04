@@ -101,7 +101,13 @@ pub fn run(args: RunArgs) -> Result<()> {
         cmd.env("AFL_I_DONT_CARE_ABOUT_MISSING_CRASHES", "1");
         cmd.env("AFL_NO_AFFINITY", "1");
         cmd.env("AFL_FAST_CAL", "1");
+        // Calibrate a seed when it is first picked, not all seeds at start.
+        cmd.env("AFL_NO_STARTUP_CALIBRATION", "1");
+        cmd.env("AFL_NO_WARN_INSTABILITY", "1");
         cmd.env("AFL_IGNORE_SEED_PROBLEMS", "1");
+        // AFL++ 4.40 runs its byte-level "frameshift" analysis even in
+        // custom-mutator-only mode; it only makes broken SQL.
+        cmd.env("AFL_FRAMESHIFT_DISABLE", "1");
         if !show_ui {
             cmd.env("AFL_NO_UI", "1");
         }
