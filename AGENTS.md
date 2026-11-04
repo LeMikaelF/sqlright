@@ -175,10 +175,35 @@ purpose:
 - The TLP oracle does not take a SELECT with a window clause: the C++ took
   `avg(c1) OVER (...)` for an aggregate and compared one row per input row
   with one aggregated value.
+- The TLP comparison of a plain SELECT checks the rows as a sorted multiset
+  after the row count. The C++ stopped at the count, which misses a wrong
+  value in a row.
+- The NoREC oracle does not take `count(*) FILTER (WHERE ...)`: the
+  rewrite keeps only the WHERE clause, so the filtered count never matched.
 - The output of the harness has a first line with the hash of the input.
   The oracle only compares output that belongs to the test case it sent.
 - The harness prints `ERROR:  <message>` for a failed statement, like the
   C++ PostgreSQL client did, so the result extraction is unchanged.
+
+## When a campaign reports hundreds of failures
+
+One cause usually makes them all. Group the failing pairs by the shape of
+the oracle SELECT before you read reports one by one:
+
+```bash
+# For every report: run the harness, find the pairs whose results differ,
+# print the first SELECT of each pair with literals and numbers replaced.
+python3 -I scripts/group_failures.py "work/norec/bugs/*.sql" 100
+```
+
+(`scripts/group_failures.py` is that script: it
+splits the `.sql` file and the harness output at the `BEGIN VERI n` and
+`END VERI n` markers and groups the mismatching pairs.) The three floods
+of the first tursopg campaigns were: a non-boolean WHERE expression that
+tursopg accepts (NoREC), window functions taken for aggregates (TLP), and
+`count(*) FILTER (...)` (NoREC). Each was an oracle problem and was fixed
+in the oracle, not by filtering reports. A flood that is a real database
+bug gets one entry in `docs/turso-bugs.md` with a minimal reproducer.
 
 ## Rules for changes
 
