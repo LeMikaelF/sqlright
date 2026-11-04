@@ -16,7 +16,6 @@ use sqlright_mutator::oracle::{AllCompRes, CompRes, OraCompRes, Oracle};
 use sqlright_mutator::Mutator;
 use sqlright_pg_parser::parse_query;
 
-use crate::norec::parse_leading_int;
 
 pub struct Tlp;
 
@@ -426,7 +425,8 @@ impl Tlp {
             res.comp_res = OraCompRes::Error;
             return true;
         }
-        let (Some(a), Some(b)) = (first_number(&res.res_str_0), first_number(&res.res_str_1)) else {
+        let (Some(a), Some(b)) = (first_number(&res.res_str_0), first_number(&res.res_str_1))
+        else {
             res.comp_res = OraCompRes::Error;
             return true;
         };
@@ -440,28 +440,16 @@ impl Tlp {
         };
         false
     }
-        let (Some(a), Some(b)) = (
-            parse_leading_int(&res.res_str_0),
-            parse_leading_int(&res.res_str_1),
-        ) else {
-            res.comp_res = OraCompRes::Error;
-            return true;
-        };
-        res.res_int_0 = a;
-        res.res_int_1 = b;
-        res.comp_res = if a != b {
-            OraCompRes::Fail
-        } else {
-            OraCompRes::Pass
-        };
-        false
-    }
 }
 
-/// Count the rows of a result block, like the C++: newlines minus empty lines.
 /// The first non-empty line of a result block as a number.
 fn first_number(block: &str) -> Option<f64> {
-    block.lines().map(str::trim).find(|l| !l.is_empty())?.parse::<f64>().ok()
+    block
+        .lines()
+        .map(str::trim)
+        .find(|l| !l.is_empty())?
+        .parse::<f64>()
+        .ok()
 }
 
 /// The text without whitespace, for comparing two printed expressions.
@@ -469,6 +457,7 @@ fn squeeze(text: &str) -> String {
     text.chars().filter(|c| !c.is_whitespace()).collect()
 }
 
+/// Count the rows of a result block, like the C++: newlines minus empty lines.
 fn count_non_empty(block: &str) -> i64 {
     let newlines = block.matches('\n').count() as i64;
     let empties = string_splitter(block, '\n')
@@ -672,13 +661,25 @@ mod tests {
 
     #[test]
     fn compares_aggregates_as_numbers() {
-        let mut same_value = CompRes { res_str_0: "\n-2.77322779960316e+18 \n".into(), res_str_1: "\n-2773227799603160576 \n".into(), ..CompRes::default() };
+        let mut same_value = CompRes {
+            res_str_0: "\n-2.77322779960316e+18 \n".into(),
+            res_str_1: "\n-2773227799603160576 \n".into(),
+            ..CompRes::default()
+        };
         Tlp::compare_aggr(&mut same_value);
         assert_eq!(same_value.comp_res, OraCompRes::Pass);
-        let mut other_value = CompRes { res_str_0: "\n10 \n".into(), res_str_1: "\n11 \n".into(), ..CompRes::default() };
+        let mut other_value = CompRes {
+            res_str_0: "\n10 \n".into(),
+            res_str_1: "\n11 \n".into(),
+            ..CompRes::default()
+        };
         Tlp::compare_aggr(&mut other_value);
         assert_eq!(other_value.comp_res, OraCompRes::Fail);
-        let mut no_value = CompRes { res_str_0: "\n\n".into(), res_str_1: "\n0 \n".into(), ..CompRes::default() };
+        let mut no_value = CompRes {
+            res_str_0: "\n\n".into(),
+            res_str_1: "\n0 \n".into(),
+            ..CompRes::default()
+        };
         Tlp::compare_aggr(&mut no_value);
         assert_eq!(no_value.comp_res, OraCompRes::Error);
     }
