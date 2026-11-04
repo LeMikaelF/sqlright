@@ -1,0 +1,30 @@
+[package]
+name = "sqlright-harness-tursopg"
+version = "0.1.0"
+edition = "2021"
+license = "MIT"
+description = "AFL++ target that runs a SQLRight test case on an in-process tursopg database"
+
+# This crate is its own workspace: it links the turso engine from the git
+# submodule and is built with `cargo afl build --release`, which instruments
+# every crate in the build for coverage.
+[workspace]
+
+[[bin]]
+name = "sqlright-harness-tursopg"
+path = "src/main.rs"
+
+[dependencies]
+afl = "0.18.2"
+turso_pg = { path = "../../turso/postgres/frontend" }
+turso_core = { path = "../../turso/core", features = ["conn_raw_api"] }
+
+[profile.release]
+opt-level = 3
+debug = "line-tables-only"
+panic = "abort"
+codegen-units = 16
+lto = false
+
+[profile.dev]
+panic = "abort"

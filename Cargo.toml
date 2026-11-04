@@ -1,0 +1,31 @@
+[workspace]
+resolver = "2"
+members = [
+    "crates/sqlright-ir",
+    "crates/sqlright-pg-parser",
+    "crates/sqlright-mutator",
+    "crates/sqlright-oracle",
+    "crates/sqlright-afl",
+    "crates/sqlright-cli",
+]
+# The tursopg harness links the turso engine from the git submodule, so it
+# is a separate workspace. Build it with `cargo afl build` in crates/sqlright-harness-tursopg.
+exclude = ["crates/sqlright-harness-tursopg", "turso"]
+
+[workspace.package]
+version = "0.1.0"
+edition = "2021"
+license = "MIT"
+repository = "https://github.com/LeMikaelF/sqlright"
+
+[workspace.dependencies]
+sqlright-ir = { path = "crates/sqlright-ir" }
+sqlright-pg-parser = { path = "crates/sqlright-pg-parser" }
+sqlright-mutator = { path = "crates/sqlright-mutator" }
+sqlright-oracle = { path = "crates/sqlright-oracle" }
+rand = "0.8"
+anyhow = "1"
+clap = { version = "4", features = ["derive"] }
+
+[profile.release]
+debug = "line-tables-only"

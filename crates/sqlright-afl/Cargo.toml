@@ -1,0 +1,16 @@
+[package]
+name = "sqlright-afl"
+version.workspace = true
+edition.workspace = true
+license.workspace = true
+repository.workspace = true
+description = "SQLRight as an AFL++ custom mutator, plus the test-case engine the CLI reuses"
+
+[lib]
+crate-type = ["cdylib", "rlib"]
+
+[dependencies]
+sqlright-ir = { workspace = true }
+sqlright-pg-parser = { workspace = true }
+sqlright-mutator = { workspace = true }
+sqlright-oracle = { workspace = true }

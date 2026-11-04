@@ -1,0 +1,9 @@
+[package]
+name = "sqlright-ir"
+version.workspace = true
+edition.workspace = true
+license.workspace = true
+repository.workspace = true
+description = "SQLRight intermediate representation (IR) of SQL statements"
+
+[dependencies]

@@ -1,0 +1,12 @@
+[package]
+name = "sqlright-mutator"
+version.workspace = true
+edition.workspace = true
+license.workspace = true
+repository.workspace = true
+description = "SQLRight mutation engine: IR mutation, libraries, and context-based instantiation"
+
+[dependencies]
+sqlright-ir = { workspace = true }
+sqlright-pg-parser = { workspace = true }
+rand = { workspace = true, features = ["small_rng"] }
