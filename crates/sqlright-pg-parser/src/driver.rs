@@ -50,7 +50,7 @@ pub fn parse(sql: &str) -> Result<IrTree, ParseError> {
         if state == YYFINAL {
             break;
         }
-        let mut yyn = YYPACT[state as usize] as i32;
+        let mut yyn = YYPACT[state as usize];
         let mut reduce_rule: Option<usize> = None;
         if yyn == YYPACT_NINF {
             // default action
@@ -64,7 +64,7 @@ pub fn parse(sql: &str) -> Result<IrTree, ParseError> {
             };
             let symbol = translate(tok.kind);
             yyn += symbol;
-            if yyn < 0 || yyn > YYLAST || YYCHECK[yyn as usize] as i32 != symbol {
+            if !(0..=YYLAST).contains(&yyn) || YYCHECK[yyn as usize] as i32 != symbol {
                 // default action
             } else {
                 let action = YYTABLE[yyn as usize] as i32;
@@ -102,7 +102,7 @@ pub fn parse(sql: &str) -> Result<IrTree, ParseError> {
         let lhs = YYR1[rule] as i32;
         let top = *states.last().unwrap();
         let goto_index = YYPGOTO[(lhs - YYNTOKENS) as usize] as i32 + top;
-        let next_state = if goto_index >= 0 && goto_index <= YYLAST && YYCHECK[goto_index as usize] as i32 == top {
+        let next_state = if (0..=YYLAST).contains(&goto_index) && YYCHECK[goto_index as usize] as i32 == top {
             YYTABLE[goto_index as usize] as i32
         } else {
             YYDEFGOTO[(lhs - YYNTOKENS) as usize] as i32

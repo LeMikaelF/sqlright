@@ -956,8 +956,6 @@ impl Mutator {
                 self.rng.rand_range(-10000, -10)
             } else if ori_int < 0 {
                 self.rng.rand_range(-10, 0)
-            } else if ori_int < 10 {
-                self.rng.rand_range(0, 10)
             } else if ori_int < 10000 {
                 self.rng.rand_range(0, 10)
             } else if self.rng.rand_int(2) < 1 {

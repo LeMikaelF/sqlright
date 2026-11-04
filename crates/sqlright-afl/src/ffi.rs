@@ -79,6 +79,10 @@ pub extern "C" fn afl_custom_init(_afl: *mut c_void, seed: c_uint) -> *mut c_voi
     })
 }
 
+/// # Safety
+///
+/// Called by AFL++ with the state pointer that `afl_custom_init` returned
+/// and with buffers that stay valid for the duration of the call.
 #[no_mangle]
 pub unsafe extern "C" fn afl_custom_deinit(data: *mut c_void) {
     abort_on_panic("afl_custom_deinit", || {
@@ -93,11 +97,19 @@ pub unsafe extern "C" fn afl_custom_deinit(data: *mut c_void) {
 #[no_mangle]
 pub extern "C" fn afl_custom_splice_optout(_data: *mut c_void) {}
 
+/// # Safety
+///
+/// Called by AFL++ with the state pointer that `afl_custom_init` returned
+/// and with buffers that stay valid for the duration of the call.
 #[no_mangle]
 pub unsafe extern "C" fn afl_custom_queue_get(_data: *mut c_void, _filename: *const c_char) -> u8 {
     1
 }
 
+/// # Safety
+///
+/// Called by AFL++ with the state pointer that `afl_custom_init` returned
+/// and with buffers that stay valid for the duration of the call.
 #[no_mangle]
 pub unsafe extern "C" fn afl_custom_fuzz_count(data: *mut c_void, buf: *const u8, buf_size: usize) -> c_uint {
     abort_on_panic("afl_custom_fuzz_count", || {
@@ -105,12 +117,16 @@ pub unsafe extern "C" fn afl_custom_fuzz_count(data: *mut c_void, buf: *const u8
         let seed = String::from_utf8_lossy(bytes(buf, buf_size)).into_owned();
         let n = st.engine.prepare(&seed);
         if st.engine.config.debug {
-            st.engine.log(&format!("{n} test cases for a seed of {} bytes", buf_size));
+            st.engine.log(&format!("{n} test cases for a seed of {buf_size} bytes"));
         }
         n as c_uint
     })
 }
 
+/// # Safety
+///
+/// Called by AFL++ with the state pointer that `afl_custom_init` returned
+/// and with buffers that stay valid for the duration of the call.
 #[no_mangle]
 pub unsafe extern "C" fn afl_custom_fuzz(
     data: *mut c_void,
@@ -145,6 +161,10 @@ pub unsafe extern "C" fn afl_custom_fuzz(
     })
 }
 
+/// # Safety
+///
+/// Called by AFL++ with the state pointer that `afl_custom_init` returned
+/// and with buffers that stay valid for the duration of the call.
 #[no_mangle]
 pub unsafe extern "C" fn afl_custom_post_run(data: *mut c_void) {
     abort_on_panic("afl_custom_post_run", || {
@@ -158,6 +178,10 @@ pub unsafe extern "C" fn afl_custom_post_run(data: *mut c_void) {
     })
 }
 
+/// # Safety
+///
+/// Called by AFL++ with the state pointer that `afl_custom_init` returned
+/// and with buffers that stay valid for the duration of the call.
 #[no_mangle]
 pub unsafe extern "C" fn afl_custom_queue_new_entry(data: *mut c_void, filename_new_queue: *const c_char, _filename_orig_queue: *const c_char) -> u8 {
     abort_on_panic("afl_custom_queue_new_entry", || {
@@ -179,11 +203,19 @@ pub extern "C" fn afl_custom_describe(_data: *mut c_void, _max_description_len: 
 }
 
 /// No trimming: a SQL test case cannot lose bytes and stay valid.
+/// # Safety
+///
+/// Called by AFL++ with the state pointer that `afl_custom_init` returned
+/// and with buffers that stay valid for the duration of the call.
 #[no_mangle]
 pub unsafe extern "C" fn afl_custom_init_trim(_data: *mut c_void, _buf: *mut u8, _buf_size: usize) -> c_int {
     0
 }
 
+/// # Safety
+///
+/// Called by AFL++ with the state pointer that `afl_custom_init` returned
+/// and with buffers that stay valid for the duration of the call.
 #[no_mangle]
 pub unsafe extern "C" fn afl_custom_trim(_data: *mut c_void, out_buf: *mut *mut u8) -> usize {
     if !out_buf.is_null() {
@@ -192,6 +224,10 @@ pub unsafe extern "C" fn afl_custom_trim(_data: *mut c_void, out_buf: *mut *mut 
     0
 }
 
+/// # Safety
+///
+/// Called by AFL++ with the state pointer that `afl_custom_init` returned
+/// and with buffers that stay valid for the duration of the call.
 #[no_mangle]
 pub unsafe extern "C" fn afl_custom_post_trim(_data: *mut c_void, _success: u8) -> c_int {
     0

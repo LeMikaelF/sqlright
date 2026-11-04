@@ -239,8 +239,7 @@ mod tests {
         let mut all = AllCompRes::default();
         all.v_cmd_str.push("SELECT 'BEGIN VERI 0'; SELECT * FROM v0 WHERE c1 > 1; SELECT 'END VERI 0';".into());
         all.v_res_str.push("x".into());
-        let mut r = CompRes::default();
-        r.v_res_str = vec!["1 \n2 \n".into(), "1 \n".into()];
+        let r = CompRes { v_res_str: vec!["1 \n2 \n".into(), "1 \n".into()], ..CompRes::default() };
         all.v_res.push(r);
         Index.compare_results(&mut all);
         assert_eq!(all.final_res, Some(OraCompRes::Fail));

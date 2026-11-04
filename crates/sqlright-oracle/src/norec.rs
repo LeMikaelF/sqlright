@@ -279,9 +279,7 @@ mod tests {
     #[test]
     fn compares_counts() {
         let mut all = AllCompRes::default();
-        let mut r = sqlright_mutator::oracle::CompRes::default();
-        r.res_str_0 = "3".into();
-        r.res_str_1 = "4".into();
+        let r = sqlright_mutator::oracle::CompRes { res_str_0: "3".into(), res_str_1: "4".into(), ..Default::default() };
         all.v_res.push(r);
         Norec.compare_results(&mut all);
         assert_eq!(all.final_res, Some(OraCompRes::Fail));

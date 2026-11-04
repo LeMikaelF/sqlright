@@ -1475,6 +1475,7 @@ impl IrType {
     pub fn as_str(self) -> &'static str {
         IR_TYPE_NAMES[self as usize]
     }
+    #[allow(clippy::should_implement_trait)]
     pub fn from_str(name: &str) -> Option<IrType> {
         IR_TYPE_NAMES.iter().position(|n| *n == name).map(|i| ALL_IR_TYPES[i])
     }
@@ -4459,6 +4460,7 @@ impl DataType {
     pub fn as_str(self) -> &'static str {
         DATA_TYPE_NAMES[self as usize]
     }
+    #[allow(clippy::should_implement_trait)]
     pub fn from_str(name: &str) -> Option<DataType> {
         DATA_TYPE_NAMES.iter().position(|n| *n == name).map(|i| ALL_DATA_TYPES[i])
     }

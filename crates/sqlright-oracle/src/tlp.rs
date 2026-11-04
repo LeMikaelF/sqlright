@@ -524,9 +524,7 @@ mod tests {
 
     #[test]
     fn counts_rows() {
-        let mut res = CompRes::default();
-        res.res_str_0 = "1 \n2 \n".into();
-        res.res_str_1 = "1 \n2 \n3 \n".into();
+        let mut res = CompRes { res_str_0: "1 \n2 \n".into(), res_str_1: "1 \n2 \n3 \n".into(), ..CompRes::default() };
         assert!(!Tlp::compare_norm(&mut res));
         assert_eq!(res.comp_res, OraCompRes::Fail);
     }

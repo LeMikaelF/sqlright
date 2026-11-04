@@ -222,6 +222,7 @@ impl IrTree {
     }
 
     /// Number of nodes ever allocated, dropped nodes included.
+    #[allow(clippy::len_without_is_empty)]
     pub fn len(&self) -> usize {
         self.nodes.len()
     }
