@@ -180,6 +180,10 @@ purpose:
   value in a row.
 - The NoREC oracle does not take `count(*) FILTER (WHERE ...)`: the
   rewrite keeps only the WHERE clause, so the filtered count never matched.
+- The TLP aggregate comparison parses both results as numbers and allows a
+  relative difference of 1e-9: tursopg prints `avg(bigint)` as a double and
+  `sum(s) / sum(c)` as an integer. The C++ parsed both as `int` and
+  reported an error on overflow.
 - The TLP oracle takes a grouped SELECT only when its target is one of the
   GROUP BY expressions. tursopg accepts a target that is neither grouped
   nor aggregated (PostgreSQL rejects it) and returns the value of some row
@@ -211,8 +215,9 @@ splits the `.sql` file and the harness output at the `BEGIN VERI n` and
 of the first tursopg campaigns were: a non-boolean WHERE expression that
 tursopg accepts (NoREC), window functions taken for aggregates (TLP), and
 `count(*) FILTER (...)` (NoREC), lost result markers after a failed
-statement in a transaction block (NoREC), and a grouped SELECT whose
-target is not a grouping expression (TLP). Each was a SQLRight problem and
+statement in a transaction block (NoREC), a grouped SELECT whose target
+is not a grouping expression (TLP), and one value printed as a double and
+as an integer (TLP). Each was a SQLRight problem and
 was fixed at its source, not by filtering reports. A flood that is a real database
 bug gets one entry in `docs/turso-bugs.md` with a minimal reproducer.
 

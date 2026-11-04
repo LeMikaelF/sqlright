@@ -122,3 +122,19 @@ SELECT c6 FROM v4 WHERE c6 = 30 GROUP BY c5;          -- tursopg: 30
 
 Found by: the TLP oracle, round 4 (two reports). The TLP oracle now takes
 a grouped SELECT only when its target is one of the GROUP BY expressions.
+
+## 6. avg() over integers returns double precision
+
+PostgreSQL computes `avg` over `integer` or `bigint` as `numeric`, so the
+result is exact. tursopg returns a double, which loses digits above 2^53.
+
+```sql
+CREATE TABLE t (c bigint);
+INSERT INTO t VALUES (-2773227799603160576), (-2773227799603160576);
+SELECT avg(c) FROM t;             -- tursopg: -2.77322779960316e+18    PostgreSQL: -2773227799603160576.00000000000000000000
+SELECT sum(c) / count(c) FROM t;  -- tursopg: -2773227799603160576
+```
+
+Found by: the TLP oracle, round 5 (90 reports with the same two-way
+print of one value). The TLP aggregate comparison now compares numbers
+with a relative tolerance.
