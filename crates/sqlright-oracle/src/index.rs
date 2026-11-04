@@ -53,6 +53,12 @@ impl Index {
     }
 
     fn stmt_index_type(t: &IrTree, stmt: IrId) -> IndexType {
+        // `sum(x) OVER (...)` returns one row per input row, and without an
+        // ORDER BY in the window its values depend on the scan order. Only
+        // its row count is comparable.
+        if has_window_function(t, stmt) {
+            return IndexType::Normal;
+        }
         let targets = ir_wrapper::get_target_el_in_select_target(t, stmt);
         let Some(target) = targets.first().copied() else {
             return IndexType::Normal;
@@ -144,6 +150,14 @@ impl Index {
         };
         false
     }
+}
+
+fn has_window_function(t: &IrTree, stmt: IrId) -> bool {
+    [IrType::OverClause, IrType::WindowClause].iter().any(|&ty| {
+        ir_wrapper::get_ir_node_in_stmt_with_type_full(t, stmt, ty, false, true, true)
+            .iter()
+            .any(|&c| !t.is_empty(c))
+    })
 }
 
 impl Oracle for Index {
@@ -266,6 +280,29 @@ mod tests {
         let mut pre = pre;
         let run1 = Index.post_fix_transform_normal_stmt(&mut m, &mut pre, pre_root, 1);
         assert_eq!(run1[0].to_string(run1[0].root.unwrap()), "");
+    }
+
+    #[test]
+    fn compares_only_the_row_count_of_a_window_function() {
+        let cmd = "SELECT 'BEGIN VERI 0'; SELECT sum(c1) OVER (ROWS BETWEEN 2 PRECEDING AND 1 PRECEDING) FROM v0 WHERE c1; SELECT 'END VERI 0'; \
+                   SELECT 'BEGIN VERI 0'; SELECT sum(c1) FROM v0 WHERE c1; SELECT 'END VERI 0';";
+        assert_eq!(
+            Index::get_v_valid_type(cmd),
+            vec![IndexType::Normal, IndexType::Aggr]
+        );
+        let mut all = AllCompRes::default();
+        all.v_cmd_str.push(cmd.into());
+        all.v_res_str.push("x".into());
+        all.v_res.push(CompRes {
+            v_res_str: vec!["1.0 \n2.0 \n".into(), "2.0 \n5.0 \n".into()],
+            ..CompRes::default()
+        });
+        all.v_res.push(CompRes {
+            v_res_str: vec!["3 \n".into(), "3 \n".into()],
+            ..CompRes::default()
+        });
+        Index.compare_results(&mut all);
+        assert_eq!(all.final_res, Some(OraCompRes::Pass));
     }
 
     #[test]
