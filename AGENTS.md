@@ -180,6 +180,10 @@ purpose:
   value in a row.
 - The NoREC oracle does not take `count(*) FILTER (WHERE ...)`: the
   rewrite keeps only the WHERE clause, so the filtered count never matched.
+- The TLP oracle takes a grouped SELECT only when its target is one of the
+  GROUP BY expressions. tursopg accepts a target that is neither grouped
+  nor aggregated (PostgreSQL rejects it) and returns the value of some row
+  of the group, which depends on the plan.
 - The output of the harness has a first line with the hash of the input.
   The oracle only compares output that belongs to the test case it sent.
 - The harness prints the result markers (`SELECT 'BEGIN VERI n'`) itself
@@ -206,8 +210,9 @@ splits the `.sql` file and the harness output at the `BEGIN VERI n` and
 `END VERI n` markers and groups the mismatching pairs.) The three floods
 of the first tursopg campaigns were: a non-boolean WHERE expression that
 tursopg accepts (NoREC), window functions taken for aggregates (TLP), and
-`count(*) FILTER (...)` (NoREC), and lost result markers after a failed
-statement in a transaction block (NoREC). Each was a SQLRight problem and
+`count(*) FILTER (...)` (NoREC), lost result markers after a failed
+statement in a transaction block (NoREC), and a grouped SELECT whose
+target is not a grouping expression (TLP). Each was a SQLRight problem and
 was fixed at its source, not by filtering reports. A flood that is a real database
 bug gets one entry in `docs/turso-bugs.md` with a minimal reproducer.
 
