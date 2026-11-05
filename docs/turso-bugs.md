@@ -17,7 +17,7 @@ Issues #11395 to #11408 came from the 12-hour campaign of 2026-11-05.
 PostgreSQL does not have) have no entry in this file.
 NOREC crash 000000 (src 002220) of that campaign is #11403: a longer VALUES row
 panics in `op_string8` (`index out of bounds: the len is 9 but the index is 9`).
-NOREC crash 000001 (src 002305) is the same panic.
+NOREC crashes 000001 (src 002305) and 000004 (src 002636) are the same panic.
 
 ## 1. Crash: extension aggregate in a GROUP BY query
 
@@ -114,7 +114,9 @@ with an index does the same: `INSERT INTO t VALUES (2)` stores
 `WHERE c = '2'` finds the row only through the index (round 12h-b, INDEX).
 A `jsonb` primary key does the same: after `INSERT INTO t VALUES (1), (2), (6)`,
 `WHERE c = 6` counts 1 row and `WHERE NOT (c = 6)` counts 3 rows, so
-`sum(c)` over the TLP partitions is 15 instead of 9 (round 12h-b, TLP). With a
+`sum(c)` over the TLP partitions is 15 instead of 9 (round 12h-b, TLP). The text
+`'1.2345678901234e-200'` in an indexed `timestamptz` column does the same (two
+TLP reports of camp-tlp2, 2026-11-05). With a
 valid date (`INSERT INTO v0 VALUES ('2024-01-02')`) both forms agree.
 PostgreSQL rejects the insert (`column "c1" is of type date but expression
 is of type integer`), so the first problem is the accepted insert; given
