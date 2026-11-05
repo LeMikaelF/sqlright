@@ -140,7 +140,14 @@ TLP instance of the campaign of 2026-11-05 found it again: after
 partitions return the row twice (`bug_TLP_0602e96674489819`,
 `bug_TLP_06469310a0e61eab`, `bug_TLP_5bc844d37a3e31e9`,
 `bug_TLP_86307e4368968465`, `bug_TLP_afe0d9b35941f0e3`,
-`bug_TLP_b1a1d6494b83d06d`). With a
+`bug_TLP_b1a1d6494b83d06d`). At 10:33 UTC the TLP instance wrote 12
+more reports with a `jsonb PRIMARY KEY` column, from one queue entry:
+`bug_TLP_06a94864063785c6`, `bug_TLP_076a9784944e3c5f`,
+`bug_TLP_208fb8d6d440036a`, `bug_TLP_316f6d9d6cec5d37`,
+`bug_TLP_3ac525acee178c19`, `bug_TLP_49e07a562b5ffa9f`,
+`bug_TLP_4d8562dfeb691a1d`, `bug_TLP_67e07469fc144154`,
+`bug_TLP_6b57657cbb4580e0`, `bug_TLP_c3870b4bc200715c`,
+`bug_TLP_d0caf18ec455a14f` and `bug_TLP_d1e63494cc33019c`. With a
 valid date (`INSERT INTO v0 VALUES ('2024-01-02')`) both forms agree.
 PostgreSQL rejects the insert (`column "c1" is of type date but expression
 is of type integer`), so the first problem is the accepted insert; given
@@ -241,7 +248,7 @@ https://github.com/tursodatabase/turso/issues/11395#issuecomment-6648263299.
 Crashes `id:000010`, `id:000012` and `id:000015` are the same `VALUES` form.
 Count at 07:23 UTC: 4 of the 80 NoREC crashes have this panic. Count at
 08:26 UTC: 5 of the 221 NoREC crashes. Count at 09:28 UTC: 5 of the 273
-NoREC crashes.
+NoREC crashes. Count at 10:32 UTC: 5 of the 347 NoREC crashes.
 
 ## 8. ON CONFLICT DO UPDATE SET is not checked on a table without an index
 
@@ -285,7 +292,11 @@ DO UPDATE). Found again on 2026-11-05 (`bug_INDEX_7bdd7c2ec31c66e2`,
 `bug_INDEX_7906bb8760a5989e` (`SET b`), `bug_INDEX_86a5ffea1600cff3`
 (`SET a`) and `bug_INDEX_920195ff53002088` (`SET level1_no`). Batch of
 09:28 UTC: `bug_INDEX_1b178eed5095c9a5`, `bug_INDEX_1d08af128a4509aa`,
-`bug_INDEX_6be6a020c30b4897` and `bug_INDEX_91f13d274e059e28`.
+`bug_INDEX_6be6a020c30b4897` and `bug_INDEX_91f13d274e059e28`. Batch of
+10:32 UTC: `bug_INDEX_0ca621c3060c9971` (its full test case also hits
+the harness timeout; the fixed build gives ERROR),
+`bug_INDEX_3667624ba05fd815`, `bug_INDEX_39da718980ce4a7b` and
+`bug_INDEX_f9f9bd32753072b6`.
 
 A flood: from 05:20 to 05:22 UTC the INDEX instance wrote 150 reports
 in 2 minutes. All 150 hold `ON CONFLICT DO UPDATE SET fruit = ...`. They
@@ -439,7 +450,8 @@ Issue: https://github.com/tursodatabase/turso/issues/11398. The INDEX
 instance of the campaign of 2026-11-05 found it again as crash
 `id:000000` (`make_date(2013, 2, 1534231376)`, the same panic at
 `chrono-0.4.42/src/naive/datetime/mod.rs:1635:38`). Count at 09:28 UTC:
-1 of the 273 NoREC crashes and 1 of the 2 INDEX crashes.
+1 of the 273 NoREC crashes and 1 of the 2 INDEX crashes. Count at
+10:32 UTC: 1 of the 347 NoREC crashes and 1 of the 2 INDEX crashes.
 
 ## 13. make_date returns a blob
 
@@ -608,7 +620,8 @@ and `bug_INDEX_f5a863c31d917ecc`. Batch of 07:23 UTC:
 `bug_INDEX_84d1e9ae9f203339`, `bug_INDEX_a8b4bc05efe12c8d`,
 `bug_INDEX_af0e2c2ea71d0b7b`, `bug_INDEX_d3811504e87a81d9`,
 `bug_INDEX_d7f2464fad3d75bf` and `bug_INDEX_ffc19a13c686a9fb`. From
-07:24 to 07:26 UTC, one queue entry gave 90 more reports. In each, only
+07:24 to 07:26 UTC, one queue entry gave 90 more reports, and 2 more of
+the same style came later (92 at 10:32 UTC). In each, only
 run 0 prints `invalid timestamp value` (an index on `c::timestamptz`
 over a `text` column). Reports of 08:26 UTC: `bug_INDEX_1a217873e45c6a45`,
 `bug_INDEX_211e839985f3f2a4`, `bug_INDEX_224f556ad2098f7b`,
@@ -621,7 +634,13 @@ over a `text` column). Reports of 08:26 UTC: `bug_INDEX_1a217873e45c6a45`,
 and `bug_INDEX_e939a8e6cc18eea1`. Batch of 09:28 UTC:
 `bug_INDEX_1a423d5bb687ff09`, `bug_INDEX_233a663fe366f189`,
 `bug_INDEX_77f2099a21f45a28` (`money` to `serial[]`),
-`bug_INDEX_e935842f2fa12a98` and `bug_INDEX_fba159fca61bc472`.
+`bug_INDEX_e935842f2fa12a98` and `bug_INDEX_fba159fca61bc472`. Batch of
+10:32 UTC: `bug_INDEX_14b73f701b3e89bc`, `bug_INDEX_1512696f24409843`,
+`bug_INDEX_322d1d511a8ca39c`, `bug_INDEX_340a2af1bad5a0ff`,
+`bug_INDEX_454ff5026133fea9`, `bug_INDEX_62e9c18d4a12350a`,
+`bug_INDEX_65ed21361e4edff0`, `bug_INDEX_6bb42074f5a7eb48`,
+`bug_INDEX_6ffc24dcaaafed98`, `bug_INDEX_93f3ad7122e06ba0`,
+`bug_INDEX_d62395f6fe0fc7d1` and `bug_INDEX_dd531838fa002dad`.
 
 ## 17. Crash: a multi-row VALUES list with rows of different lengths
 
@@ -668,6 +687,8 @@ TLP crashes have this cause. Count at 08:26 UTC: 14 of the 221 NoREC
 crashes and 4 of the 6 TLP crashes. Count at 09:28 UTC: 18 of the 273
 NoREC crashes (15 at the three known lines and 3 more `VALUES` forms),
 5 of the 8 TLP crashes and 1 of the 2 INDEX crashes (`execute.rs:5910`).
+Count at 10:32 UTC: 18 of the 347 NoREC crashes (15 plus 3 more `VALUES`
+forms), 5 of the 8 TLP crashes and 1 of the 2 INDEX crashes.
 
 ## 18. integer / text column is accepted
 
@@ -753,7 +774,8 @@ Found by: the INDEX oracle, campaign of 2026-11-05
 `bug_INDEX_9bf29920b7cb4c9f`, `bug_INDEX_9dae627b38f5a1f3` and
 `bug_INDEX_c3b093f37a41c17f`. Later: `bug_INDEX_942f1a02d8543551`
 (`WHERE oid = 'cr_owner'`), `bug_INDEX_0bee8ad86590ab36` and
-`bug_INDEX_29c3ca95a502cf8e`.
+`bug_INDEX_29c3ca95a502cf8e`. Batch of 10:32 UTC:
+`bug_INDEX_6485a2dad42b35fb` (`oid = '17.35177750493897715514'`).
 
 Issue: a variant of https://github.com/tursodatabase/turso/issues/9663
 (the same problem with `rowid`). Comment:
@@ -822,7 +844,8 @@ Count at 07:23 UTC: 64 of the 80 NoREC crashes have this panic. They
 came from one queue entry. AFL++ ran that entry again and again, and the
 NoREC instance lost about 30 minutes on it. Count at 08:26 UTC: 202 of
 the 221 NoREC crashes. Count at 09:28 UTC: 249 of the 273 NoREC crashes
-and 1 of the 8 TLP crashes.
+and 1 of the 8 TLP crashes. Count at 10:32 UTC: 323 of the 347 NoREC
+crashes and 1 of the 8 TLP crashes.
 
 ## 23. LIKE reads the whole string when the first characters differ
 
@@ -865,6 +888,17 @@ statements too. The `lpad` case differs: PostgreSQL rejects a result
 longer than 1 GB at once, because it reserves 4 bytes for each
 character. tursopg starts to build the string. NoREC hang `id:000000` is
 finding 10.
+
+Two more NoREC hangs build a long string with `lpad` in a multi-row
+`INSERT ... RETURNING`:
+
+- `id:000003`: `quote_literal(lpad('hi', 529537728, '*'))` (530 MB).
+- `id:000004`: `INSERT INTO v7 VALUES (1, 'p'), (quote_literal(lpad('hi', 671437373, '30')), 'q'), (3, 'r') RETURNING v7.*`
+  (671 MB). Prefix bisection with a limit of 8 seconds: statement 6 is
+  the first slow statement.
+
+In PostgreSQL 16.15, `lpad('hi', 529537728, '*')` fails at once with
+`requested length too large`. A length of 268,435,455 fails the same way.
 
 ## 24. An IN list with two spellings of one value returns the row twice through an index
 
@@ -929,4 +963,4 @@ reports.
 | a query holds the literal `'BEGIN VERI 1'`, and the error message repeats it | NoREC | 1 | the result extraction takes a marker only as a whole line |
 | a statement hits the 2-second limit of the harness in one run only | INDEX | 1 | a Fail with `ERROR:  interrupt` in the output becomes Error |
 | `max(a, b)` with two arguments taken for an aggregate | INDEX | 6 | `ir_wrapper::is_scalar_min_max` (also used by TLP) |
-| a query returns the row `END VERI 1`, which looks like a marker (`SELECT 'END VERI 1' FROM t`), or a stray marker statement sits among the normal statements | TLP | 2 | the mutator does not learn or reuse marker literals, and it does not add marker statements to the library (`is_marker_text` and `is_marker_statement` in `fix.rs`) |
+| a query returns the row `END VERI 1`, which looks like a marker (`SELECT 'END VERI 1' FROM t`), or a stray marker statement sits among the normal statements | TLP | 3 (`bug_TLP_c5b14ce82655389a` at 10:33 UTC turns from FAIL to ERROR when the marker literals are renamed) | the mutator does not learn or reuse marker literals, and it does not add marker statements to the library (`is_marker_text` and `is_marker_statement` in `fix.rs`) |
