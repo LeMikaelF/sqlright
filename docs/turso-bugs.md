@@ -456,6 +456,25 @@ seconds in total. The AFL++ time limit is 20 seconds.
 
 Issue: https://github.com/tursodatabase/turso/issues/11411
 
+A longer pattern aborts the process under a 4 GB memory limit:
+`SELECT '' LIKE repeat('2', 863178415)` stops with `memory allocation of
+3452713680 bytes failed` (AFL++ crash, INDEX instance). Comment:
+https://github.com/tursodatabase/turso/issues/11411#issuecomment-6649235187
+
+## Not turso bugs: harness and oracle limits
+
+- A statement that returns several gigabytes, for example
+  `SELECT repeat(1, 737393991) FROM v0` on a table with 6 rows, aborts
+  the harness with `memory allocation of 5899154112 bytes failed`. The
+  harness keeps all output in one `Vec<u8>`, and the vector doubles when
+  it grows. PostgreSQL also sends these rows to the client. Three AFL++
+  crashes of the 12-hour campaign of 2026-11-05 had this cause.
+- A string literal that is the same as a result marker (`'END VERI 1'`)
+  is printed as a row. Then the oracle takes the row for the marker and
+  compares the wrong blocks. The instantiation step takes this literal
+  from the marker statements. One TLP report of the same campaign had
+  this cause. With the literal changed, the test case passes.
+
 ## Campaign log
 
 tursopg at submodule commit ff97c22, 4 cores, one `afl-fuzz` instance per
