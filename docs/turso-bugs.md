@@ -582,6 +582,55 @@ https://github.com/tursodatabase/turso/issues/11011#issuecomment-6655290026
 
 Issue: https://github.com/tursodatabase/turso/issues/11011
 
+## 21. An expression index changes a comparison with TRUE or FALSE
+
+In a scan, tursopg compares text with `TRUE` or `FALSE` as a number:
+`'1' = TRUE` and `'0' = FALSE` are true. An index on an expression does
+not use this conversion, so the index lookup finds no row.
+
+```sql
+CREATE TABLE t (c text);
+INSERT INTO t VALUES ('1');
+SELECT upper(c) = TRUE FROM t;                    -- 1
+CREATE INDEX i ON t ((upper(c)));
+SELECT count(*) FROM t WHERE upper(c) = TRUE;     -- 0 (1 without the index)
+SELECT count(*) FROM t WHERE NOT (upper(c) = TRUE); -- 0
+```
+
+An index on `(c || '')` does the same. An index on the plain column `c`
+does not change `WHERE c = TRUE`. PostgreSQL rejects `text = boolean`.
+
+Found by: the TLP instance of the 12-hour campaign of 2026-11-05
+(`SELECT * FROM v0` returned 4 rows, the partitions on
+`upper(c1) = TRUE` returned 2).
+
+Issue: https://github.com/tursodatabase/turso/issues/11436
+
+## 22. Crash: a FROM subquery reads a CTE column without a FROM clause
+
+A FROM subquery without a FROM clause names a column of a CTE. When
+another subquery reads the CTE, turso panics in the code generation.
+
+```sql
+WITH c AS (SELECT 5 AS x) SELECT * FROM (SELECT x WHERE EXISTS (SELECT 1 FROM c));
+```
+
+```text
+thread 'main' panicked at core/translate/expr/translator.rs:2771:22:
+Outer query subquery result_columns_start_reg must be set in program
+```
+
+Without `EXISTS (SELECT 1 FROM c)`, turso gives `no such column: x`
+(the fix of #9521 plans only the CTEs that a subquery reads). The
+SQLite frontend on main (65154da) panics the same way. SQLite gives
+`no such column: x`.
+
+Found by: the NoREC instance of the 12-hour campaign of 2026-11-05, as
+an AFL++ crash (an INSERT with twelve nested CTEs named `x`). Reduced
+with a reducer that removes parenthesized groups.
+
+Issue: https://github.com/tursodatabase/turso/issues/11462
+
 ## Campaign log
 
 tursopg at submodule commit ff97c22, 4 cores, one `afl-fuzz` instance per
@@ -606,3 +655,54 @@ mutation library is the same set.
 The INDEX oracle ran once for two hours with the first harness build. The
 NoREC and TLP rounds after the first used the harness that prints the
 result markers itself and the seeds without transaction statements.
+
+### 12-hour campaign of 2026-11-05
+
+tursopg at ff97c22. One `afl-fuzz` instance per oracle, from 02:31 to
+14:31 UTC. Seeds: 1,837 files (both corpora, filtered by the harness).
+The instances used the oracles of commit 6b1824e. The SQLRight fixes
+made during the campaign (afbea86, 1933e2e, 962d1e1, dbf2ed9, and the
+result marker fixes 3f6b925 and ada818b of another branch) were not
+active in the running instances.
+
+| Oracle | Executions | Test cases | Reports | Crashes | Hangs | Queue | Edges |
+|---|---|---|---|---|---|---|---|
+| NoREC | 1,776k | 1,577,686 | 641 | 236 | 4 | 30,601 | 172,513 |
+| TLP | 1,022k | 857,325 | 34 | 3 | 10 | 26,142 | 172,233 |
+| INDEX | 751k | 632,818 | 382 | 117 | 2 | 18,717 | 161,715 |
+
+New turso issues: #11407 (finding 8, ON CONFLICT with a non-unique
+index), #11436 (finding 21), #11462 (finding 22). Comments with new
+forms: #11403 (a plain VALUES list panics), #11386 (timetz, every
+integer finds the row), #11395 (an extension aggregate inside an
+aggregate).
+
+Reports by cause:
+
+- NoREC: about 550 window clauses kept in the original form (SQLRight,
+  962d1e1), about 75 timestamptz text comparisons (#11011), jsonb and
+  date keys (#11386), 1 FROM taken from a subquery (SQLRight, afbea86),
+  a few result markers in values (SQLRight, 3f6b925).
+- TLP: date, time, timetz and timestamptz keys (#11386, #11011), the
+  expression index with TRUE (#11436), result markers in values
+  (SQLRight, 3f6b925), 2 aliases with a double quote (SQLRight, open),
+  1 aggregate in a subquery over an outer column (SQLRight, open).
+- INDEX: expression and partial indexes that fail on some rows
+  (SQLRight, 1933e2e), an INSERT stopped by the time limit in one run
+  only (SQLRight, dbf2ed9), ON CONFLICT DO UPDATE (#11407), bare
+  columns with HAVING (#7977), date, timestamp and jsonb keys (#11386),
+  1 bare column next to an aggregate (SQLRight, 1933e2e).
+
+Crashes by location, all known: stack overflow on nested CTEs with one
+name (131, #11401), extension aggregate in scalar context (116,
+#11395), more than 7 array dimensions (89, #11416, fixed after
+ff97c22), CTE column read without FROM (11, #11462), make_date (4,
+#11398), ALTER TABLE DROP without columns (2, #11402), VALUES rows of
+different lengths (1, #11403), INSERT with one DEFAULT for several
+columns (1, #10088). One TLP crash file (`sig:09`) is a worker process
+that was stopped by hand.
+
+Hangs: NUMERIC with a scale of hundreds of millions (#11397), and
+lpad or rpad to hundreds of millions of characters. `lpad` builds the
+padding one character at a time: 360 million characters take 9.9
+seconds. No issue was opened for the speed of lpad.

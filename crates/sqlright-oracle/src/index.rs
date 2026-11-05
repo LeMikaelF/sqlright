@@ -4,7 +4,9 @@
 //! Indexes must not change query results. The test case runs twice: once
 //! with its `CREATE INDEX` statements and once with them replaced by empty
 //! statements. UNIQUE indexes are made non-unique first, because a unique
-//! index rejects rows and so changes the results by design.
+//! index rejects rows and so changes the results by design. For the same
+//! reason, an index on an expression or with a WHERE clause stays in every
+//! run: its expression can fail on a row and so reject the row.
 
 use sqlright_ir::util::{find_string_in, is_str_empty, string_splitter};
 use sqlright_ir::{IrId, IrTree, IrType, Op};
@@ -59,22 +61,18 @@ impl Index {
         if has_window_function(t, stmt) {
             return IndexType::Normal;
         }
-        let targets = ir_wrapper::get_target_el_in_select_target(t, stmt);
-        let Some(target) = targets.first().copied() else {
+        // With GROUP BY, the first value is from the group that comes first,
+        // and the plan decides that order. The number of groups does not
+        // depend on the plan.
+        if ir_wrapper::is_exist_ir_node_in_stmt_with_type(t, stmt, IrType::GroupByItem, false) {
             return IndexType::Normal;
-        };
-        for func_name in
-            ir_wrapper::get_ir_node_in_stmt_with_type(t, target, IrType::FuncName, false)
-        {
-            if let Some(iden) = t.left(func_name) {
-                let name = t.str_val(iden);
-                if ["min", "max", "count", "sum", "avg"]
-                    .iter()
-                    .any(|a| find_string_in(name, a))
-                {
-                    return IndexType::Aggr;
-                }
-            }
+        }
+        // A target that is not aggregated next to an aggregate (`SELECT c1,
+        // count(*) FROM v0`) takes its value from some row, and the plan
+        // decides which. PostgreSQL rejects such a query, tursopg accepts it.
+        let targets = ir_wrapper::get_ir_node_in_stmt_with_type(t, stmt, IrType::TargetEl, false);
+        if !targets.is_empty() && targets.iter().all(|&target| calls_aggregate(t, target)) {
+            return IndexType::Aggr;
         }
         IndexType::Normal
     }
@@ -152,6 +150,36 @@ impl Index {
     }
 }
 
+/// True when the target calls one of the aggregates that the oracle compares.
+fn calls_aggregate(t: &IrTree, target: IrId) -> bool {
+    ir_wrapper::get_ir_node_in_stmt_with_type(t, target, IrType::FuncName, false)
+        .iter()
+        .filter_map(|&func_name| t.left(func_name))
+        .any(|iden| {
+            let name = t.str_val(iden);
+            ["min", "max", "count", "sum", "avg"]
+                .iter()
+                .any(|a| find_string_in(name, a))
+        })
+}
+
+/// True when an element of the index is an expression, not a plain
+/// column, or when the index has a WHERE clause.
+fn has_expression_or_predicate(t: &IrTree, stmt: IrId) -> bool {
+    let has_expression =
+        ir_wrapper::get_ir_node_in_stmt_with_type(t, stmt, IrType::IndexElem, false)
+            .iter()
+            .any(|&elem| {
+                t.left(elem)
+                    .is_some_and(|first| t.ty(first) != IrType::Identifier)
+            });
+    let has_predicate =
+        ir_wrapper::get_ir_node_in_stmt_with_type(t, stmt, IrType::WhereClause, false)
+            .iter()
+            .any(|&clause| !t.is_empty(clause));
+    has_expression || has_predicate
+}
+
 fn has_window_function(t: &IrTree, stmt: IrId) -> bool {
     [IrType::OverClause, IrType::WindowClause]
         .iter()
@@ -214,7 +242,11 @@ impl Oracle for Index {
         stmt: IrId,
         run: usize,
     ) -> Vec<IrTree> {
-        if run == 0 {
+        // An index expression or a partial-index predicate runs on every
+        // insert and update, and it can fail (`1 / c1` with `c1 = 0`).
+        // PostgreSQL fails the statement too, so such an index changes the
+        // results by design. It stays in every run.
+        if run == 0 || has_expression_or_predicate(t, stmt) {
             return vec![t.extract(stmt)];
         }
         // Later runs have no index: an empty statement takes its place.
@@ -236,6 +268,17 @@ impl Oracle for Index {
 
     fn compare_results(&self, all: &mut AllCompRes) {
         if all.v_cmd_str.is_empty() || all.v_res_str.is_empty() {
+            all.final_res = Some(OraCompRes::Error);
+            return;
+        }
+        // The harness stops a statement after a time limit. A table with
+        // indexes is slower to write, so the limit can stop a statement in
+        // one run only, and the runs then hold different data.
+        if all
+            .v_res_str
+            .iter()
+            .any(|out| out.lines().any(|l| l.trim_end() == "ERROR:  interrupt"))
+        {
             all.final_res = Some(OraCompRes::Error);
             return;
         }
@@ -284,6 +327,58 @@ mod tests {
         assert_eq!(run1[0].to_string(run1[0].root.unwrap()), "");
     }
 
+    fn run_two_text(sql: &str) -> String {
+        let mut m = Mutator::new(5);
+        let mut q = parse_query(sql).unwrap();
+        let stmt = ir_wrapper::get_first_stmt_from_root(&q.tree, q.root).unwrap();
+        let mut pre = Index
+            .pre_fix_transform_normal_stmt(&mut m, &mut q.tree, stmt)
+            .unwrap();
+        let root = pre.root.unwrap();
+        let run1 = Index.post_fix_transform_normal_stmt(&mut m, &mut pre, root, 1);
+        run1[0].to_string(run1[0].root.unwrap())
+    }
+
+    #[test]
+    fn keeps_expression_and_partial_indexes_in_every_run() {
+        assert_eq!(
+            run_two_text("CREATE INDEX i0 ON v0 ((1 / c1));"),
+            "CREATE INDEX i0 ON v0 ( ( 1 / c1 ) )"
+        );
+        assert_eq!(
+            run_two_text("CREATE INDEX i0 ON v0 (lower(c2));"),
+            "CREATE INDEX i0 ON v0 ( lower ( c2 ) )"
+        );
+        assert_eq!(
+            run_two_text("CREATE INDEX i0 ON v0 (c1) WHERE c1 % 2 = 1;"),
+            "CREATE INDEX i0 ON v0 ( c1 ) WHERE c1 % 2 = 1"
+        );
+        assert_eq!(run_two_text("CREATE INDEX i0 ON v0 (c1, c2 DESC);"), "");
+    }
+
+    #[test]
+    fn compares_an_aggregate_only_when_every_target_is_aggregated() {
+        let block = |q: &str| format!("SELECT 'BEGIN VERI 0'; {q} SELECT 'END VERI 0'; ");
+        let cmd = [
+            "SELECT c4, count(*) FROM v3;",
+            "SELECT count(*), c4 FROM v3;",
+            "SELECT count(c4) FROM v3 GROUP BY c5;",
+            "SELECT count(*), max(c4) FROM v3 WHERE c4 > 1;",
+        ]
+        .iter()
+        .map(|q| block(q))
+        .collect::<String>();
+        assert_eq!(
+            Index::get_v_valid_type(&cmd),
+            vec![
+                IndexType::Normal,
+                IndexType::Normal,
+                IndexType::Normal,
+                IndexType::Aggr
+            ]
+        );
+    }
+
     #[test]
     fn compares_only_the_row_count_of_a_window_function() {
         let cmd = "SELECT 'BEGIN VERI 0'; SELECT sum(c1) OVER (ROWS BETWEEN 2 PRECEDING AND 1 PRECEDING) FROM v0 WHERE c1; SELECT 'END VERI 0'; \
@@ -305,6 +400,23 @@ mod tests {
         });
         Index.compare_results(&mut all);
         assert_eq!(all.final_res, Some(OraCompRes::Pass));
+    }
+
+    #[test]
+    fn does_not_compare_runs_after_an_interrupted_statement() {
+        let cmd = "SELECT 'BEGIN VERI 0'; SELECT * FROM v0; SELECT 'END VERI 0';";
+        let mut all = AllCompRes::default();
+        all.v_cmd_str.push(cmd.into());
+        all.v_res_str
+            .push("ERROR:  interrupt\nBEGIN VERI 0 \n1 \nEND VERI 0 \n".into());
+        all.v_res_str
+            .push("BEGIN VERI 0 \n1 \n2 \nEND VERI 0 \n".into());
+        all.v_res.push(CompRes {
+            v_res_str: vec!["1 \n".into(), "1 \n2 \n".into()],
+            ..CompRes::default()
+        });
+        Index.compare_results(&mut all);
+        assert_eq!(all.final_res, Some(OraCompRes::Error));
     }
 
     #[test]

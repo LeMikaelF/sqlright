@@ -282,6 +282,27 @@ purpose:
   one row per partition.
 - The TLP rewrite of `avg` is `sum(s)::float8 / sum(c)`. Without the cast,
   the integer division drops the fraction (PostgreSQL does the same).
+- The NoREC rewrite finds the FROM, WHERE and ORDER BY nodes of its
+  template before it copies the original clauses in. When the WHERE
+  clause held a subquery, a later search found the FROM of that
+  subquery, and the two queries of a pair read different tables.
+- The NoREC oracle removes every non-empty window clause from the
+  original form. The C++ removed the first over clause, which is often
+  the empty one of another function call (`round(c1)` inside WITHIN
+  GROUP). Then `count(*) OVER (ORDER BY sum(c1))` stayed: the aggregate
+  makes one group, and the window count is 1 even with no matching row.
+- The INDEX oracle keeps an index on an expression or with a WHERE
+  clause in every run. The expression runs on each insert and can fail
+  (`1 / c1` with `c1 = 0`), so the index rejects rows by design, as in
+  PostgreSQL.
+- The INDEX oracle does not compare the runs of a test case when the
+  harness stopped a statement in any run (`ERROR:  interrupt`). A table
+  with indexes is slower to write, so the time limit can stop an INSERT
+  in the run with indexes only, and the runs then hold different data.
+- The INDEX oracle compares the first value of a SELECT only when every
+  target calls an aggregate and there is no GROUP BY. The C++ looked at
+  one target only, so `SELECT c1, count(*)` compared the value of `c1`
+  from a row that the plan chooses.
 - The output of the harness has a first line with the hash of the input.
   The oracle only compares output that belongs to the test case it sent.
 - The harness prints the result markers (`SELECT 'BEGIN VERI n'`) itself

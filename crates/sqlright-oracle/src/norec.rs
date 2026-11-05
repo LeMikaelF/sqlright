@@ -157,11 +157,20 @@ impl Oracle for Norec {
         // The original form, without window clauses.
         let mut first = t.extract(stmt);
         let first_root = first.root.expect("root");
+        // Every function call has an over clause, most of them empty, and
+        // one can come before the clause to remove (`round(c1)` inside
+        // WITHIN GROUP). Search again after each removal: a removed clause
+        // can hold other clauses.
         for ty in [IrType::OverClause, IrType::WindowClause] {
-            let clauses = ir_wrapper::get_ir_node_in_stmt_with_type(&first, first_root, ty, false);
-            if let Some(clause) = clauses.first().copied() {
+            while let Some(clause) =
+                ir_wrapper::get_ir_node_in_stmt_with_type(&first, first_root, ty, false)
+                    .into_iter()
+                    .find(|&c| !first.is_empty(c))
+            {
                 let empty = first.node(ty, Op::empty(), None, None);
-                first.swap_node(first_root, clause, Some(empty));
+                if !first.swap_node(first_root, clause, Some(empty)) {
+                    return Vec::new();
+                }
                 first.deep_drop(clause);
             }
         }
@@ -353,6 +362,21 @@ mod tests {
         );
         assert!(text.ends_with("FROM v0 ORDER BY v2 ) AS ress"), "{text}");
         assert!(parse_query(&text).is_some());
+    }
+
+    #[test]
+    fn removes_the_window_clause_after_an_empty_one() {
+        let mut m = Mutator::new(1);
+        let mut q = parse_query(
+            "SELECT count(*) WITHIN GROUP (ORDER BY round(c1, 1)) OVER (ORDER BY sum(c1) DESC) FROM v0 WHERE c2 = 40;",
+        )
+        .unwrap();
+        let stmt = ir_wrapper::get_first_stmt_from_root(&q.tree, q.root).unwrap();
+        let forms = Norec.post_fix_transform_select_stmt(&mut m, &mut q.tree, stmt, 0);
+        assert_eq!(forms.len(), 2);
+        let text = forms[0].to_string(forms[0].root.unwrap());
+        assert!(!text.contains("OVER"), "{text}");
+        assert!(parse_query(&text).is_some(), "{text}");
     }
 
     #[test]
