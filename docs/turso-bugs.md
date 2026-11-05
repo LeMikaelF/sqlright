@@ -121,6 +121,7 @@ Found by: the NoREC oracle, round 3 (the only report of that round that
 was not a transaction-marker false positive).
 
 Issue: https://github.com/tursodatabase/turso/issues/11386.
+The time, timestamptz and jsonb variants are in a comment on #11386.
 Related: https://github.com/tursodatabase/turso/issues/11011 (the `c1 = 'abc'` case) and
 https://github.com/tursodatabase/turso/issues/11314 (tracking issue for comparisons and index lookups).
 
@@ -198,6 +199,8 @@ This is not finding 1. Finding 1 is a slice index panic in
 Found by: the NoREC oracle, 12-hour campaign. AFL++ saved it as a crash
 after 88 seconds (`SELECT count(*) FROM v0 WHERE c1 @> percentile_cont(c2, c1)`).
 
+Issue: https://github.com/tursodatabase/turso/issues/11395
+
 ## 8. ON CONFLICT DO UPDATE SET is not checked on a table without an index
 
 An unknown column in the SET list of `ON CONFLICT DO UPDATE` gives an
@@ -226,6 +229,8 @@ gives `column "nosuch" of relation "t" does not exist`.
 Found by: the INDEX oracle, 12-hour campaign (the row counts of the run
 with indexes and the run without indexes were different).
 
+Issue: added as a comment on https://github.com/tursodatabase/turso/issues/9664 (unknown names in DO UPDATE).
+
 ## 9. A partial index with an invalid literal makes every insert fail
 
 tursopg accepts a partial index whose predicate compares a `numeric`
@@ -248,6 +253,8 @@ the literal when it makes the index.
 Found by: the INDEX oracle, 12-hour campaign (one of three reports with
 the index rows `1.2` and `1.25`).
 
+Issue: https://github.com/tursodatabase/turso/issues/11396
+
 ## 10. A very large numeric scale makes an insert run for minutes
 
 tursopg accepts any precision and scale in `NUMERIC(p, s)`. An insert
@@ -268,6 +275,8 @@ Expected PostgreSQL behavior: `CREATE TABLE` fails with
 
 Found by: the INDEX instance of the 12-hour campaign, as an AFL++ hang
 (`default/hangs/`).
+
+Issue: https://github.com/tursodatabase/turso/issues/11397
 
 ## 11. A bare column in a HAVING query without GROUP BY is NULL after a table scan
 
@@ -301,6 +310,8 @@ rejects the first query with `HAVING clause on a non-aggregate query`.
 Found by: the TLP oracle, 12-hour campaign, round 12h-b
 (`SELECT * FROM v0 HAVING sum(c2) > v0.c2 * 'c'` against its partition on `oid = 1`).
 
+Issue: covered by https://github.com/tursodatabase/turso/issues/7977 (HAVING without GROUP BY with a bare column).
+
 ## 12. Crash: make_date with a very large day number
 
 `make_date` and `make_timestamp` panic when the day number moves the
@@ -328,6 +339,8 @@ Expected PostgreSQL behavior: the error
 Found by: the INDEX instance of the 12-hour campaign, round 12h-b, as
 an AFL++ crash (`SELECT make_date(TRUE, 4, 1453556443) FROM (VALUES ...)`).
 
+Issue: https://github.com/tursodatabase/turso/issues/11398
+
 ## 13. make_date returns a blob
 
 In PostgreSQL, `make_date(2024, 1, 1)` returns the date `2024-01-01`.
@@ -342,6 +355,8 @@ SELECT typeof(make_date(2024, 1, 1));   -- tursopg: blob
 Expected PostgreSQL behavior: a value of type `date`.
 
 Found by: the reduction of finding 12.
+
+Issue: covered by https://github.com/tursodatabase/turso/issues/9609.
 
 ## 14. Crash: stack overflow on a nested CTE with the same name
 
@@ -466,3 +481,10 @@ mutation library is the same set.
 The INDEX oracle ran once for two hours with the first harness build. The
 NoREC and TLP rounds after the first used the harness that prints the
 result markers itself and the seeds without transaction statements.
+| 12h-b | NoREC | 351k | 17 | 142 min. 272,988 test cases, 245,877 pass, 22,778 error. All 17 reports: finding 4 with a `time` primary key. 10 crashes: 8 finding 7, 1 finding 14, 1 finding 15. 1 hang: finding 10 |
+| 12h-b | TLP | 292k | 36 | Four instances (the oracle was fixed three times), 151k test cases in total. 7 aggregate inside CASE, 1 `avg` integer division, 18 ungrouped target after name filling (all SQLRight bugs, fixed). 1 finding 11. 11 finding 4 (`date` and `jsonb` keys). 1 crash: finding 16 |
+| 12h-b | INDEX | 129k | 7 | 142 min. 78,796 test cases, 73,857 pass. All 7 reports: finding 4 with an indexed `timestamptz` column. 2 crashes: finding 12. 1 hang (not examined) |
+
+Round 12h-b stopped after 142 minutes, not 12 hours. The first start of
+round 12h-b did no work: the harness binary stopped with SIGILL after a
+container restart on a machine with another CPU (see AGENTS.md).
