@@ -558,6 +558,19 @@ Issue: https://github.com/tursodatabase/turso/issues/11416 (closed on
 2026-11-05 by https://github.com/tursodatabase/turso/pull/11423, after
 ff97c22). camp-tlp3 crash 000001 (src 004577) found it again.
 
+## 20. A partial index on `oid` makes every insert fail
+
+```sql
+CREATE TABLE t (c text);
+CREATE INDEX i ON t (c) WHERE oid > 0;   -- tursopg: accepted
+INSERT INTO t VALUES ('x');              -- tursopg: ERROR:  no such column: oid
+```
+
+The same happens with `rowid`. Issue:
+https://github.com/tursodatabase/turso/issues/9663 (open, its comment has the
+`oid` form). Found again by camp-index4 (`bug_INDEX_d183e4aa6bc84b93`,
+`CREATE INDEX i6 ON v0 (c1) WHERE COALESCE(oid, 1) > 0`).
+
 ## Not turso bugs: harness and oracle limits
 
 - A statement that returns several gigabytes, for example
