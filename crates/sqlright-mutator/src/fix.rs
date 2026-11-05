@@ -700,7 +700,13 @@ impl Mutator {
                 fixed.insert(id);
                 let ori_str = t.str_val(id).to_string();
                 let ty = t.ty(id);
+                // The marker statements of a saved test case hold the literals
+                // 'BEGIN VERI n' and 'END VERI n'. A query with such a literal
+                // makes the harness print a data row that looks like a marker.
+                // Thus the mutator must not learn or reuse them.
+                let is_marker = ty == IrType::StringLiteral && is_marker_text(&ori_str);
                 if ty == IrType::StringLiteral
+                    && !is_marker
                     && !self.common_string_library.contains(&ori_str)
                     && self.rng.rand_int(10) < 5
                 {
@@ -721,7 +727,9 @@ impl Mutator {
                                 self.ctx.v_float_literals.push(v);
                             }
                         }
-                        IrType::StringLiteral => self.ctx.v_string_literals.push(ori_str.clone()),
+                        IrType::StringLiteral if !is_marker => {
+                            self.ctx.v_string_literals.push(ori_str.clone())
+                        }
                         _ => {}
                     }
                     continue;
@@ -1171,11 +1179,29 @@ impl Mutator {
     }
 }
 
+/// True for the text of a result marker: `BEGIN VERI n` or `END VERI n`, with
+/// or without quotes around it.
+fn is_marker_text(s: &str) -> bool {
+    let s = s.trim().trim_matches('\'').trim();
+    s.strip_prefix("BEGIN VERI ")
+        .or_else(|| s.strip_prefix("END VERI "))
+        .is_some_and(|n| !n.is_empty() && n.bytes().all(|b| b.is_ascii_digit()))
+}
+
 #[cfg(test)]
 mod tests {
     use super::*;
     use crate::oracle::{AllCompRes, Oracle};
     use sqlright_pg_parser::parse_query;
+
+    #[test]
+    fn finds_the_text_of_a_marker() {
+        assert!(is_marker_text("BEGIN VERI 0"));
+        assert!(is_marker_text("'END VERI 12'"));
+        assert!(!is_marker_text("END VERI"));
+        assert!(!is_marker_text("END VERI x"));
+        assert!(!is_marker_text("sample"));
+    }
 
     struct AnySelect;
     impl Oracle for AnySelect {

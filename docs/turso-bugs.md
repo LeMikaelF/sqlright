@@ -896,13 +896,15 @@ result markers itself and the seeds without transaction statements.
 ### Campaign of 2026-11-05 (12 hours, in progress)
 
 Three instances (NoREC, TLP, INDEX) on tursopg at submodule commit ff97c22.
-The final numbers go here when the campaign ends. SQLRight found three
-false-positive classes in the first 5 hours. Each one is fixed at its
-source and has a unit test. The running instances use the old library, so
-they can still write these reports.
+The final numbers go here when the campaign ends. SQLRight found four
+false-positive classes in the first 6.5 hours. Each one is fixed at its
+source and has a unit test (the fourth one has a test of its helper only).
+The running instances use the old library, so they can still write these
+reports.
 
 | Class | Oracle | Reports | Fix |
 |---|---|---|---|
 | a query holds the literal `'BEGIN VERI 1'`, and the error message repeats it | NoREC | 1 | the result extraction takes a marker only as a whole line |
 | a statement hits the 2-second limit of the harness in one run only | INDEX | 1 | a Fail with `ERROR:  interrupt` in the output becomes Error |
 | `max(a, b)` with two arguments taken for an aggregate | INDEX | 6 | `ir_wrapper::is_scalar_min_max` (also used by TLP) |
+| a query returns the row `END VERI 1`, which looks like a marker (`SELECT 'END VERI 1' FROM t`) | TLP | 1 | the mutator does not learn or reuse marker literals (`is_marker_text` in `fix.rs`) |
