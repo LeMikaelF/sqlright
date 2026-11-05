@@ -12,16 +12,8 @@ crates/sqlright-harness-tursopg/target/release/sqlright-harness-tursopg --replay
 SQLRight does not fix turso bugs. Issues were opened on 2026-11-04 for the
 findings that no existing issue covered: #11385 (finding 1), #11386
 (finding 4), #11387 (findings 2, 3 and 5 together) and #11388 (finding 6).
-Issues #11395 to #11408 came from the 12-hour campaign of 2026-11-05.
-#11403 (a VALUES row with a different length) and #11408 (casts that
-PostgreSQL does not have) have no entry in this file.
-NOREC crash 000000 (src 002220) of that campaign is #11403: a longer VALUES row
-panics in `op_string8` (`index out of bounds: the len is 9 but the index is 9`).
-NOREC crashes 000001 (src 002305) and 000004 (src 002636) are the same panic.
-camp-index2 crash 000000 (src 001852) is the same problem, with the panic in `op_integer`
-(`execute.rs:5910`), only in the run without indexes.
-camp-index2 crash 000001 (src 001876) is the same problem, with the panic in `op_real`
-(`execute.rs:6227`).
+The 12-hour campaign of 2026-11-05 added findings 7 to 23. Each entry
+names its issue. A summary of that campaign is at the end of this file.
 
 ## 1. Crash: extension aggregate in a GROUP BY query
 
@@ -213,7 +205,7 @@ Expected PostgreSQL behavior: the error `aggregate functions are not
 allowed in WHERE`.
 
 The WHERE clause of DELETE and UPDATE panics too, and so does the window
-form `median(a) OVER ()` in WHERE (NoREC crash 000002, comment
+form `median(a) OVER ()` in WHERE (NoREC crashes 000002 and 000008, comment
 https://github.com/tursodatabase/turso/issues/11395#issuecomment-6650104597).
 
 This is not finding 1. Finding 1 is a slice index panic in
@@ -526,7 +518,7 @@ Related: https://github.com/tursodatabase/turso/issues/10618 (an untyped literal
 
 `text = boolean` is accepted too (PostgreSQL: `operator does not exist: text =
 boolean`). With a long string of digits it is slow: `SELECT repeat('2',
-976796771) = FALSE` takes 12.3 seconds. NoREC hangs 000000 and 000001 of the
+976796771) = FALSE` takes 12.3 seconds. NoREC hangs 000000 to 000003 of the
 12-hour campaign had this cause. Comment:
 https://github.com/tursodatabase/turso/issues/11387#issuecomment-6652189285
 
@@ -598,6 +590,48 @@ statement (comment with the lost key:
 https://github.com/tursodatabase/turso/issues/10567#issuecomment-6661052667).
 Found in two camp-norec2 reports whose failing pair is finding 4.
 
+## 22. Crash: a VALUES row longer than the first row
+
+Only the first row of a multi-row `VALUES` list is compared with the
+column count. A longer row writes past the register file and panics.
+
+```sql
+CREATE TABLE t (a int, b int);
+INSERT INTO t VALUES (1, 2), (3, 4, 5, 6, 7, 8, 9, 10, 11, 12, 13, 14);
+```
+
+```text
+thread 'main' panicked at core/vdbe/execute.rs:5910:5:
+index out of bounds: the len is 9 but the index is 9
+```
+
+The panic location depends on the type of the extra value: `op_integer`
+(`execute.rs:5910`), `op_real` (6227), `op_string8` (6257) or `op_null`
+(703). A shorter row takes values from the row before it.
+
+Expected PostgreSQL behavior: `VALUES lists must all be the same length`.
+
+Issue: https://github.com/tursodatabase/turso/issues/11403. In the 12-hour
+campaign: NoREC crashes 000000, 000001, 000004 and 000007 (`op_string8`,
+`op_integer`), camp-index2 crashes 000000 and 000001, camp-index4 crash
+000000 (`op_null`) and the 7 camp-tlp4 crashes.
+
+## 23. An expression index with a cast that PostgreSQL does not have blocks inserts
+
+```sql
+CREATE TABLE t (a int);
+CREATE INDEX ti ON t ((a::text[]));   -- tursopg: accepted
+INSERT INTO t VALUES (1);             -- tursopg: ERROR:  cannot store non-array value in TEXT column .
+```
+
+Expected PostgreSQL behavior: `CREATE INDEX` fails with `cannot cast type
+integer to text[]`.
+
+Issue: https://github.com/tursodatabase/turso/issues/11408. The last
+camp-index4 report (`bug_INDEX_356621a219347986`,
+`CREATE INDEX CONCURRENTLY i6 ON v0 ((c1::text[33] COLLATE "C"))`) is this
+problem.
+
 ## Not turso bugs: harness and oracle limits
 
 - A statement that returns several gigabytes, for example
@@ -657,6 +691,54 @@ Found in two camp-norec2 reports whose failing pair is finding 4.
   `#11397` hangs, from both sources, take 0.04 seconds without the scale.
   One TLP report with the label `#11396` (`bug_TLP_763374296a259483`) is
   the aggregate HAVING false positive.
+
+## SQLRight changes made during the 12-hour campaign
+
+- 8901a0b (harness): a statement whose rows pass 16 MiB gives one error
+  line. Before, the output buffer grew past the memory limit and AFL++
+  saved a crash.
+- 71a0585 (harness): skip a statement that makes a string of 10 million
+  bytes or more (`repeat`, `lpad`, `rpad` with a large count). These
+  statements filled the queues with slow cases of #11411 and #11417.
+- 05175f6 (harness): skip a statement with a `NUMERIC` type of 7 or more
+  digits (#11397).
+- 0308d32 (engine): keep the result marker statements of a queue entry out
+  of the mutation library. Their `'END VERI n'` literal broke the result
+  blocks.
+- b6fb79b (INDEX oracle): do not take a SELECT with a window function.
+- 7287fa5 (engine): match non-deterministic function names as whole words.
+- da4f30e (TLP oracle): do not take an aggregate SELECT with HAVING.
+
+## 12-hour campaign of 2026-11-05: results by cause
+
+Instances: camp-norec, camp-tlp and camp-index (the first harness and
+library), then camp-norec2, camp-tlp2 to camp-tlp4 and camp-index2 to
+camp-index4 after restarts with the fixes above. All stopped at 15:17Z.
+
+| Cause | Reports | Crashes | Hangs |
+|---|---|---|---|
+| #11386 index and expression disagree on date/time keys (finding 4) | 32 | | |
+| #9663 partial index on `oid` (finding 20) | 88 | | |
+| #11396 partial index with a text literal on a numeric column (finding 9) | 5 | | |
+| #11408 expression index with a missing cast (finding 23) | 1 | | |
+| #11387 comment: integer / text in an expression index (finding 17) | 1 | | |
+| #11403 VALUES row longer than the first row (finding 22) | | 14 | |
+| #11416 more than 7 array dimensions (finding 19, fixed after ff97c22) | | 37 | |
+| #11395 extension aggregate in WHERE (finding 7) | | 2 | |
+| #11402 ALTER TABLE DROP on a table without columns (finding 15) | | 1 | |
+| #11411 LIKE copies its operands (finding 16) | | 6 | 4 |
+| #11417 lpad and rpad are slow (finding 18) | | | 1 |
+| #11397 large NUMERIC scale (finding 10) | | | 57 |
+| #11387 comment: text = boolean (finding 17) | | | 4 |
+| SQLRight: window function in INDEX | 41 | | |
+| SQLRight: marker literal | 6 | | |
+| SQLRight: aggregate with HAVING in TLP | 13 | | |
+| SQLRight: harness output buffer | | 3 | |
+| Not a bug: quote_literal of 704 MB | | 1 | |
+
+The counts come from the replay of every report, crash and hang file.
+The watch script classified most of the later #9663, #11386, #11397,
+#11403 and #11416 files, and a sample check confirmed its classes.
 
 ## Campaign log
 
