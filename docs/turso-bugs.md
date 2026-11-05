@@ -127,7 +127,8 @@ campaign, `bug_NOREC_64871ceb9d417f2f`). The first camp-index3 report
 first camp-tlp3 report (`bug_TLP_fec843579ba6d2de`) is a `timetz` primary key:
 after `INSERT ... VALUES (5)`, `WHERE c = '7'` finds the row through the index,
 because every integer day gives `12:00:00`. All six reports of camp-norec2
-(`c7 date PRIMARY KEY`, `WHERE c7 = '7'`) are the original `date` case. With a
+(`c7 date PRIMARY KEY`, `WHERE c7 = '7'`) are the original `date` case, and so
+are 16 later camp-norec2 reports (`c2 date PRIMARY KEY`, `WHERE c2 = '10000'`). With a
 valid date (`INSERT INTO v0 VALUES ('2024-01-02')`) both forms agree.
 PostgreSQL rejects the insert (`column "c1" is of type date but expression
 is of type integer`), so the first problem is the accepted insert; given
@@ -569,7 +570,8 @@ INSERT INTO t VALUES ('x');              -- tursopg: ERROR:  no such column: oid
 The same happens with `rowid`. Issue:
 https://github.com/tursodatabase/turso/issues/9663 (open, its comment has the
 `oid` form). Found again by camp-index4 (`bug_INDEX_d183e4aa6bc84b93`,
-`CREATE INDEX i6 ON v0 (c1) WHERE COALESCE(oid, 1) > 0`).
+`CREATE INDEX i6 ON v0 (c1) WHERE COALESCE(oid, 1) > 0`), and again by
+`bug_INDEX_44242e42ca0ec57e`.
 
 ## Not turso bugs: harness and oracle limits
 
