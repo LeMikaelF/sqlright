@@ -389,6 +389,8 @@ Found by: the NoREC instance of the 12-hour campaign, round 12h-b, as
 an AFL++ crash (an `INSERT INTO v0 WITH x AS (... WITH x AS (...) ...)`
 statement with four levels of CTEs named `x`).
 
+Issue: https://github.com/tursodatabase/turso/issues/11401 (related: #8105 is about 100 nested CTEs).
+
 ## 15. Crash: ALTER TABLE DROP on a table that has only a table constraint
 
 tursopg rejects `CREATE TABLE t ()`, but it accepts a table that has
@@ -423,6 +425,8 @@ Found by: the NoREC instance of the 12-hour campaign, round 12h-b, as
 an AFL++ crash (`CREATE TABLE v0 (CONSTRAINT x FOREIGN KEY (x, x) REFERENCES v0 ...)`
 and `ALTER TABLE v0 DROP c`).
 
+Issue: https://github.com/tursodatabase/turso/issues/11402
+
 ## 16. Crash and wrong data: a VALUES row with a different length
 
 In a multi-row `INSERT ... VALUES`, tursopg compares only the first row
@@ -456,6 +460,8 @@ Expected PostgreSQL behavior: all three inserts fail with
 
 Found by: the TLP instance of the 12-hour campaign, round 12h-b, as an
 AFL++ crash (an eight-row VALUES list with one row of 12 values).
+
+Issue: https://github.com/tursodatabase/turso/issues/11403
 
 ## Campaign log
 
