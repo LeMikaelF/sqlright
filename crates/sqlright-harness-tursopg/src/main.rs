@@ -37,6 +37,13 @@ const MAX_STATEMENT_OUTPUT: usize = 16 * 1024 * 1024;
 /// `lpad` or `rpad`, makes the harness skip the statement.
 const HUGE_NUMBER_DIGITS: usize = 8;
 
+/// A NUMERIC or DECIMAL precision or scale with this many digits or more makes
+/// the harness skip the statement.
+const HUGE_NUMERIC_DIGITS: usize = 7;
+
+/// The error message for a statement that `has_huge_numeric_size` stops.
+const SKIPPED_HUGE_NUMERIC: &str = "sqlright: skipped, the precision or scale of a numeric type is too large";
+
 /// The error message for a statement that `makes_huge_string` stops.
 const SKIPPED_HUGE_STRING: &str = "sqlright: skipped, a number in the statement is too large for repeat, lpad or rpad";
 
@@ -153,6 +160,10 @@ fn run_one(conn: &Connection, sql: &str, out: &mut Vec<u8>) {
         let _ = writeln!(out, "ERROR:  {SKIPPED_HUGE_STRING}");
         return;
     }
+    if has_huge_numeric_size(sql) {
+        let _ = writeln!(out, "ERROR:  {SKIPPED_HUGE_NUMERIC}");
+        return;
+    }
     match conn.query(sql) {
         Ok(Some(mut stmt)) => {
             stmt.set_query_timeout_override(Some(Some(STATEMENT_TIMEOUT)));
@@ -220,6 +231,55 @@ fn makes_huge_string(sql: &str) -> bool {
         }
     }
     false
+}
+
+/// True when the statement has a NUMERIC or DECIMAL type with a precision or a
+/// scale of 7 or more digits, for example `NUMERIC(1234690362, 1234690362)`.
+/// An insert into such a column does not finish in minutes (turso issue 11397).
+fn has_huge_numeric_size(sql: &str) -> bool {
+    let lower = sql.to_ascii_lowercase();
+    let bytes = lower.as_bytes();
+    for keyword in ["numeric", "decimal"] {
+        let mut from = 0;
+        while let Some(found) = lower[from..].find(keyword) {
+            let mut i = from + found + keyword.len();
+            from = i;
+            i = skip_spaces(bytes, i);
+            if bytes.get(i) != Some(&b'(') {
+                continue;
+            }
+            i = skip_spaces(bytes, i + 1);
+            let (precision_digits, after_precision) = count_digits(bytes, i);
+            if precision_digits >= HUGE_NUMERIC_DIGITS {
+                return true;
+            }
+            i = skip_spaces(bytes, after_precision);
+            if bytes.get(i) == Some(&b',') {
+                i = skip_spaces(bytes, i + 1);
+                let (scale_digits, _) = count_digits(bytes, i);
+                if scale_digits >= HUGE_NUMERIC_DIGITS {
+                    return true;
+                }
+            }
+        }
+    }
+    false
+}
+
+fn skip_spaces(bytes: &[u8], mut i: usize) -> usize {
+    while bytes.get(i).is_some_and(|b| b.is_ascii_whitespace()) {
+        i += 1;
+    }
+    i
+}
+
+/// The number of digits that start at `i`, and the index after them.
+fn count_digits(bytes: &[u8], i: usize) -> (usize, usize) {
+    let mut end = i;
+    while bytes.get(end).is_some_and(|b| b.is_ascii_digit()) {
+        end += 1;
+    }
+    (end - i, end)
 }
 
 /// The number of bytes that a value takes in the output, without the separator.
