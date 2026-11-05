@@ -281,6 +281,7 @@ Issue: https://github.com/tursodatabase/turso/issues/11396
 The first camp-index4 report (`bug_INDEX_5ebf3ca377cc1deb`) is the same problem, with
 `WHERE v0.c2 = 'quoted table'` on a `NUMERIC(210, 10)` column.
 `bug_INDEX_09b66ab58b9167bf` (camp-index4) is the same, with `WHERE COALESCE(c2, 1) > 'cm'`.
+`bug_INDEX_f25f98c76cbe14e7` (camp-index4) is the same, with an IN list: `WHERE v0.c2 IN ('t', '-8')`.
 
 ## 10. A very large numeric scale makes an insert run for minutes
 
