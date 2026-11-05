@@ -295,6 +295,10 @@ purpose:
   clause in every run. The expression runs on each insert and can fail
   (`1 / c1` with `c1 = 0`), so the index rejects rows by design, as in
   PostgreSQL.
+- The INDEX oracle does not compare the runs of a test case when the
+  harness stopped a statement in any run (`ERROR:  interrupt`). A table
+  with indexes is slower to write, so the time limit can stop an INSERT
+  in the run with indexes only, and the runs then hold different data.
 - The INDEX oracle compares the first value of a SELECT only when every
   target calls an aggregate and there is no GROUP BY. The C++ looked at
   one target only, so `SELECT c1, count(*)` compared the value of `c1`
