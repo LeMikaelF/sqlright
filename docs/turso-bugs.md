@@ -461,6 +461,34 @@ A longer pattern aborts the process under a 4 GB memory limit:
 3452713680 bytes failed` (AFL++ crash, INDEX instance). Comment:
 https://github.com/tursodatabase/turso/issues/11411#issuecomment-6649235187
 
+## 17. Arithmetic with a text column is accepted, and an index on it blocks inserts
+
+PostgreSQL has no `integer / text` operator. tursopg accepts it. In an
+expression index, the division runs for each new row, so a row with a
+text that is not a number cannot be inserted. Without the index, the
+insert succeeds.
+
+```sql
+CREATE TABLE t (a int, b text);
+CREATE INDEX ti ON t ((1 / b));
+INSERT INTO t VALUES (1, 'p');   -- tursopg: ERROR:  invalid input syntax for type numeric: "p"
+SELECT 1 + 'p'::text;            -- tursopg: 1 ('p' is read as 0)
+```
+
+`/` reads the text as a numeric and fails. `+` reads it as 0. Thus an
+index on `(a + b)` does not block the insert.
+
+Expected PostgreSQL behavior: `CREATE INDEX` fails with
+`operator does not exist: integer / text`.
+
+Found by: the INDEX oracle, 12-hour campaign of 2026-11-05
+(`CREATE INDEX i6 ON v0 ((1 / c4))`).
+
+Issue: https://github.com/tursodatabase/turso/issues/11387 covers it, as one
+more expression that PostgreSQL rejects (comment
+https://github.com/tursodatabase/turso/issues/11387#issuecomment-6649270385).
+Related: https://github.com/tursodatabase/turso/issues/10618 (an untyped literal, `'x' / 1`).
+
 ## Not turso bugs: harness and oracle limits
 
 - A statement that returns several gigabytes, for example
