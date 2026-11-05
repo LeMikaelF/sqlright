@@ -12,6 +12,9 @@ crates/sqlright-harness-tursopg/target/release/sqlright-harness-tursopg --replay
 SQLRight does not fix turso bugs. Issues were opened on 2026-11-04 for the
 findings that no existing issue covered: #11385 (finding 1), #11386
 (finding 4), #11387 (findings 2, 3 and 5 together) and #11388 (finding 6).
+Issues #11395 to #11408 came from the 12-hour campaign of 2026-11-05.
+#11403 (a VALUES row with a different length) and #11408 (casts that
+PostgreSQL does not have) have no entry in this file.
 
 ## 1. Crash: extension aggregate in a GROUP BY query
 
@@ -198,6 +201,8 @@ This is not finding 1. Finding 1 is a slice index panic in
 Found by: the NoREC oracle, 12-hour campaign. AFL++ saved it as a crash
 after 88 seconds (`SELECT count(*) FROM v0 WHERE c1 @> percentile_cont(c2, c1)`).
 
+Issue: https://github.com/tursodatabase/turso/issues/11395
+
 ## 8. ON CONFLICT DO UPDATE SET is not checked on a table without an index
 
 An unknown column in the SET list of `ON CONFLICT DO UPDATE` gives an
@@ -226,6 +231,9 @@ gives `column "nosuch" of relation "t" does not exist`.
 Found by: the INDEX oracle, 12-hour campaign (the row counts of the run
 with indexes and the run without indexes were different).
 
+Issue: https://github.com/tursodatabase/turso/issues/11407.
+Related: https://github.com/tursodatabase/turso/issues/9664 (an unknown name in DO UPDATE SET).
+
 ## 9. A partial index with an invalid literal makes every insert fail
 
 tursopg accepts a partial index whose predicate compares a `numeric`
@@ -248,6 +256,8 @@ the literal when it makes the index.
 Found by: the INDEX oracle, 12-hour campaign (one of three reports with
 the index rows `1.2` and `1.25`).
 
+Issue: https://github.com/tursodatabase/turso/issues/11396
+
 ## 10. A very large numeric scale makes an insert run for minutes
 
 tursopg accepts any precision and scale in `NUMERIC(p, s)`. An insert
@@ -268,6 +278,8 @@ Expected PostgreSQL behavior: `CREATE TABLE` fails with
 
 Found by: the INDEX instance of the 12-hour campaign, as an AFL++ hang
 (`default/hangs/`).
+
+Issue: https://github.com/tursodatabase/turso/issues/11397
 
 ## 11. A bare column in a HAVING query without GROUP BY is NULL after a table scan
 
@@ -301,6 +313,10 @@ rejects the first query with `HAVING clause on a non-aggregate query`.
 Found by: the TLP oracle, 12-hour campaign, round 12h-b
 (`SELECT * FROM v0 HAVING sum(c2) > v0.c2 * 'c'` against its partition on `oid = 1`).
 
+Issue: https://github.com/tursodatabase/turso/issues/7977 covers it (comment
+https://github.com/tursodatabase/turso/issues/7977#issuecomment-6648759035).
+Open fixes: https://github.com/tursodatabase/turso/pull/10598 and https://github.com/tursodatabase/turso/pull/10544.
+
 ## 12. Crash: make_date with a very large day number
 
 `make_date` and `make_timestamp` panic when the day number moves the
@@ -328,6 +344,8 @@ Expected PostgreSQL behavior: the error
 Found by: the INDEX instance of the 12-hour campaign, round 12h-b, as
 an AFL++ crash (`SELECT make_date(TRUE, 4, 1453556443) FROM (VALUES ...)`).
 
+Issue: https://github.com/tursodatabase/turso/issues/11398 (#11400 is a duplicate, closed).
+
 ## 13. make_date returns a blob
 
 In PostgreSQL, `make_date(2024, 1, 1)` returns the date `2024-01-01`.
@@ -342,6 +360,8 @@ SELECT typeof(make_date(2024, 1, 1));   -- tursopg: blob
 Expected PostgreSQL behavior: a value of type `date`.
 
 Found by: the reduction of finding 12.
+
+Issue: https://github.com/tursodatabase/turso/issues/9609 covers it.
 
 ## 14. Crash: stack overflow on a nested CTE with the same name
 
@@ -373,6 +393,8 @@ can have the same crash (not examined).
 Found by: the NoREC instance of the 12-hour campaign, round 12h-b, as
 an AFL++ crash (an `INSERT INTO v0 WITH x AS (... WITH x AS (...) ...)`
 statement with four levels of CTEs named `x`).
+
+Issue: https://github.com/tursodatabase/turso/issues/11401
 
 ## 15. Crash: ALTER TABLE DROP on a table that has only a table constraint
 
@@ -407,6 +429,8 @@ form, `CREATE TABLE` fails with
 Found by: the NoREC instance of the 12-hour campaign, round 12h-b, as
 an AFL++ crash (`CREATE TABLE v0 (CONSTRAINT x FOREIGN KEY (x, x) REFERENCES v0 ...)`
 and `ALTER TABLE v0 DROP c`).
+
+Issue: https://github.com/tursodatabase/turso/issues/11402
 
 ## Campaign log
 
