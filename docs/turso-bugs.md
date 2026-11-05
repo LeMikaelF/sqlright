@@ -149,7 +149,12 @@ more reports with a `jsonb PRIMARY KEY` column, from one queue entry:
 `bug_TLP_3ac525acee178c19`, `bug_TLP_49e07a562b5ffa9f`,
 `bug_TLP_4d8562dfeb691a1d`, `bug_TLP_67e07469fc144154`,
 `bug_TLP_6b57657cbb4580e0`, `bug_TLP_c3870b4bc200715c`,
-`bug_TLP_d0caf18ec455a14f` and `bug_TLP_d1e63494cc33019c`. With a
+`bug_TLP_d0caf18ec455a14f` and `bug_TLP_d1e63494cc33019c`. At 13:34 UTC
+it wrote 20 more from one queue entry (for example
+`bug_TLP_20b4e4574d387d5d`: `sum(c1)` over the partitions on
+`c1 = 4400`). In all, 38 TLP reports have this shape (6 + 12 + 20). The
+INDEX oracle found the `timestamp` form again
+(`bug_INDEX_2d0404dc9c2fa6cf`: `WHERE c2 = '0.0'`). With a
 valid date (`INSERT INTO v0 VALUES ('2024-01-02')`) both forms agree.
 PostgreSQL rejects the insert (`column "c1" is of type date but expression
 is of type integer`), so the first problem is the accepted insert; given
@@ -252,7 +257,7 @@ Count at 07:23 UTC: 4 of the 80 NoREC crashes have this panic. Count at
 08:26 UTC: 5 of the 221 NoREC crashes. Count at 09:28 UTC: 5 of the 273
 NoREC crashes. Count at 10:32 UTC: 5 of the 347 NoREC crashes. Count at
 11:40 UTC: 5 of the 423 NoREC crashes. Count at 12:44 UTC: 5 of the 460
-NoREC crashes.
+NoREC crashes. Count at 13:48 UTC: 5 of the 542 NoREC crashes.
 
 ## 8. ON CONFLICT DO UPDATE SET is not checked on a table without an index
 
@@ -302,7 +307,8 @@ the harness timeout; the fixed build gives ERROR),
 `bug_INDEX_3667624ba05fd815`, `bug_INDEX_39da718980ce4a7b` and
 `bug_INDEX_f9f9bd32753072b6`. Batch of 11:08 UTC: `bug_INDEX_27033558ab1b9507`.
 Batch of 12:44 UTC: `bug_INDEX_aabecadeb6316adc` (`SET testns5`) and
-`bug_INDEX_ceecbfda15cfd8b8` (`SET b`).
+`bug_INDEX_ceecbfda15cfd8b8` (`SET b`). Batch of 13:48 UTC: 7 reports
+(`SET b` 3, `SET testns5` 2, `SET level1_no` 1, `SET a` 1).
 
 A flood: from 05:20 to 05:22 UTC the INDEX instance wrote 150 reports
 in 2 minutes. All 150 hold `ON CONFLICT DO UPDATE SET fruit = ...`. They
@@ -372,7 +378,9 @@ Found by: the INDEX instance of the 12-hour campaign, as an AFL++ hang
 hang `id:000000` of the INDEX instance (`NUMERIC(1849400536, 1849400536)`,
 then `INSERT INTO t VALUES ('-10e-400')`, no stop in 20 seconds). Hang
 `id:000002` of the INDEX instance is the same problem. So is hang
-`id:000000` of the NoREC instance (`NUMERIC(298295755, 298295755)`).
+`id:000000` of the NoREC instance (`NUMERIC(298295755, 298295755)`). So
+is TLP hang `id:000003` (`NUMERIC(180432432, 180432432)`, statement 4,
+the first `INSERT`).
 
 Issue: https://github.com/tursodatabase/turso/issues/11397. Comment on
 the 2-second limit:
@@ -410,7 +418,8 @@ rejects the first query with `HAVING clause on a non-aggregate query`.
 Found by: the TLP oracle, 12-hour campaign, round 12h-b
 (`SELECT * FROM v0 HAVING sum(c2) > v0.c2 * 'c'` against its partition on `oid = 1`).
 
-The INDEX oracle found it again on 2026-11-05 (`bug_INDEX_5b5dffcf76239dca`).
+The INDEX oracle found it again on 2026-11-05 (`bug_INDEX_5b5dffcf76239dca`;
+later `bug_INDEX_437d09631cedbf9a` and `bug_INDEX_e3377be4ea58f7ab`).
 A lookup on the primary key keeps the bare column. A seek in a covering
 index on `(a, b)` gives NULL, as a table scan does:
 
@@ -462,6 +471,7 @@ instance of the campaign of 2026-11-05 found it again as crash
 10:32 UTC: 1 of the 347 NoREC crashes and 1 of the 2 INDEX crashes. Count
 at 11:40 UTC: 1 of the 423 NoREC crashes and 1 of the 2 INDEX crashes.
 Count at 12:44 UTC: 1 of the 460 NoREC crashes and 1 of the 4 INDEX crashes.
+Count at 13:48 UTC: 2 of the 542 NoREC crashes and 1 of the 9 INDEX crashes.
 
 ## 13. make_date returns a blob
 
@@ -548,7 +558,8 @@ again in the campaign of 2026-11-05: 2 of the 6 TLP crashes at 08:26 UTC
 (the same assertion at `core/translate/alter.rs:893:13`). Count at
 09:28 UTC: 2 of the 8 TLP crashes. Count at 11:40 UTC: 2 of the 12 TLP
 crashes and 1 of the 423 NoREC crashes. Count at 12:44 UTC: 2 of the 15
-TLP crashes and 1 of the 460 NoREC crashes.
+TLP crashes and 1 of the 460 NoREC crashes. Count at 13:48 UTC: 2 of the
+17 TLP crashes and 1 of the 542 NoREC crashes.
 
 ## 16. Casts that PostgreSQL does not have are accepted
 
@@ -674,7 +685,9 @@ rejects as not IMMUTABLE): `bug_INDEX_23b876800dbb1b7a`,
 `bug_INDEX_b3ab979bead312c1`, `bug_INDEX_bc613faade1e75ba`,
 `bug_INDEX_bfb03c7dd11f3cad`, `bug_INDEX_cd3d763521359955` (`time`),
 `bug_INDEX_d11013f6f7cb58ce`, `bug_INDEX_d3cd98e9be51d0fa` and
-`bug_INDEX_e3f53ae14b10c18d` (`timestamptz`).
+`bug_INDEX_e3f53ae14b10c18d` (`timestamptz`). Batch of 13:48 UTC: 22
+reports (15 with `TEXT`, 6 with `INTEGER` array elements, 1 with
+`invalid time value`).
 
 ## 17. Crash: a multi-row VALUES list with rows of different lengths
 
@@ -725,7 +738,9 @@ Count at 10:32 UTC: 18 of the 347 NoREC crashes (15 plus 3 more `VALUES`
 forms), 5 of the 8 TLP crashes and 1 of the 2 INDEX crashes. Count at
 11:40 UTC: 15 of the 423 NoREC crashes, 7 of the 12 TLP crashes and 1 of
 the 2 INDEX crashes. Count at 12:44 UTC: 15 of the 460 NoREC crashes, 10
-of the 15 TLP crashes and 1 of the 4 INDEX crashes.
+of the 15 TLP crashes and 1 of the 4 INDEX crashes. Count at 13:48 UTC:
+18 of the 542 NoREC crashes (15 plus 3 more `VALUES` forms), 12 of the 17
+TLP crashes and 2 of the 9 INDEX crashes.
 
 ## 18. integer / text column is accepted
 
@@ -763,6 +778,7 @@ Reports of 08:26 UTC: `bug_INDEX_191daab77c2e66c3` (a partial index
 `bug_INDEX_b622ad2cf7311d1c` (`1 / c1`).
 
 Batch of 11:08 UTC: `bug_INDEX_1549b3e94da32994` (`division by zero`).
+Batch of 13:48 UTC: `bug_INDEX_514973afa2cb2adc` (`c2 % '192.168.1.255/6'::text`).
 A burst of 28 reports from 10:52 to 10:57 UTC came from one queue entry.
 Each has a partial index `WHERE v0.c2 = 'dump_nulls' AND lcm(c1, - c2)`.
 tursopg accepts the unary `-` on a `text` column (`- 'abc'::text` gives
@@ -828,7 +844,7 @@ Found by: the INDEX oracle, campaign of 2026-11-05
 `bug_INDEX_3e42493a5f64bd22`, `bug_INDEX_4d082225c01e7dc5`,
 `bug_INDEX_4e554e0eb8a6579c`, `bug_INDEX_52083cf69d0e8f91`,
 `bug_INDEX_68d37717614561a2`, `bug_INDEX_6d462f2a669cfb58` and
-`bug_INDEX_ba74ac6e5889dfdc`.
+`bug_INDEX_ba74ac6e5889dfdc`. Batch of 13:48 UTC: 1 report.
 
 Issue: a variant of https://github.com/tursodatabase/turso/issues/9663
 (the same problem with `rowid`). Comment:
@@ -900,7 +916,8 @@ the 221 NoREC crashes. Count at 09:28 UTC: 249 of the 273 NoREC crashes
 and 1 of the 8 TLP crashes. Count at 10:32 UTC: 323 of the 347 NoREC
 crashes and 1 of the 8 TLP crashes. Count at 11:40 UTC: 397 of the 423
 NoREC crashes and 3 of the 12 TLP crashes. Count at 12:44 UTC: 435 of the
-460 NoREC crashes and 3 of the 15 TLP crashes.
+460 NoREC crashes and 3 of the 15 TLP crashes. Count at 13:48 UTC: 516 of
+the 542 NoREC crashes and 3 of the 17 TLP crashes.
 
 ## 23. LIKE reads the whole string when the first characters differ
 
@@ -1041,7 +1058,8 @@ Found by: the INDEX instance, campaign of 2026-11-05, as AFL++ crashes
 ... FOLLOWING AND ... FOLLOWING)` on a `text` column with the value
 `'10e400'`).
 
-Issue: https://github.com/tursodatabase/turso/issues/11469.
+Issue: https://github.com/tursodatabase/turso/issues/11469. Count at
+13:48 UTC: 6 of the 9 INDEX crashes.
 
 ## Campaign log
 
