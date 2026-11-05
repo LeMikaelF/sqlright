@@ -228,6 +228,7 @@ fn make_engine(
         bug_dir: scratch,
         select_count,
         max_cases_per_seed: usize::MAX,
+        max_bytes_per_seed: usize::MAX,
         debug: std::env::var_os("SQLRIGHT_DEBUG").is_some(),
         rng_seed,
     };

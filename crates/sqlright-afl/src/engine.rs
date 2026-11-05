@@ -61,6 +61,13 @@ pub struct TestCase {
 }
 
 impl TestCase {
+    /// The size of the text of all runs, with and without markers.
+    fn size_in_bytes(&self) -> usize {
+        let marked: usize = self.marked_runs.iter().map(String::len).sum();
+        let unmarked: usize = self.unmarked_runs.iter().map(String::len).sum();
+        marked + unmarked
+    }
+
     /// The bytes AFL++ feeds to the harness: the runs separated by run markers.
     pub fn to_input(&self) -> String {
         let mut out = String::new();
@@ -238,9 +245,12 @@ impl Engine {
         let all_nodes = q.tree.all_nodes(root);
 
         let selects = self.get_oracle_select_stmts(self.config.select_count);
+        let mut total_bytes = 0usize;
 
         for ir_to_mutate in all_nodes {
-            if cases.len() >= self.config.max_cases_per_seed {
+            if cases.len() >= self.config.max_cases_per_seed
+                || total_bytes >= self.config.max_bytes_per_seed
+            {
                 break;
             }
             self.stats.num_mutate_all += 1;
@@ -273,11 +283,14 @@ impl Engine {
                     Some(case) => {
                         self.stats.num_validate += 1;
                         self.stats.cases_generated += 1;
+                        total_bytes += case.size_in_bytes();
                         cases.push(case);
                     }
                     None => self.stats.total_append_failed += 1,
                 }
-                if cases.len() >= self.config.max_cases_per_seed {
+                if cases.len() >= self.config.max_cases_per_seed
+                    || total_bytes >= self.config.max_bytes_per_seed
+                {
                     break;
                 }
             }
@@ -576,6 +589,7 @@ mod tests {
             bug_dir: dir,
             select_count: 3,
             max_cases_per_seed: 50,
+            max_bytes_per_seed: usize::MAX,
             debug: false,
             rng_seed: Some(42),
         }
@@ -611,6 +625,25 @@ mod tests {
                 c.marked_runs[0]
             );
         }
+    }
+
+    #[test]
+    fn stops_making_cases_when_their_text_is_too_big() {
+        let lib = "CREATE TABLE t (a INT, b INT);\nINSERT INTO t VALUES (1, 2);\nSELECT COUNT(*) FROM t WHERE a > 0;\nSELECT COUNT(*) FROM t WHERE b = 2 AND a < 10;\n";
+        let seed = "CREATE TABLE v0 (c1 INT, c2 TEXT);\nINSERT INTO v0 VALUES (1, 'x');\nSELECT COUNT(*) FROM v0 WHERE c1 = 1;\n";
+        let make = |max_bytes: usize| {
+            let mut config = test_config("NOREC");
+            config.max_bytes_per_seed = max_bytes;
+            let mut engine = Engine::new(config, 1).unwrap();
+            for line in lib.lines() {
+                engine.mutator.init_from_line(engine.oracle.as_ref(), line);
+            }
+            engine.generate_cases(seed)
+        };
+        let all = make(usize::MAX);
+        assert!(all.len() > 3, "{}", all.len());
+        let few = make(1);
+        assert_eq!(few.len(), 1);
     }
 
     #[test]

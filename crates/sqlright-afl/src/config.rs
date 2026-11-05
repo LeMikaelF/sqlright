@@ -22,6 +22,8 @@ pub struct Config {
     pub select_count: usize,
     /// `SQLRIGHT_MAX_CASES`: the most test cases made from one seed.
     pub max_cases_per_seed: usize,
+    /// `SQLRIGHT_MAX_BYTES`: the most bytes of test case text made from one seed.
+    pub max_bytes_per_seed: usize,
     /// `SQLRIGHT_DEBUG`: write a stats file and verbose messages.
     pub debug: bool,
     /// `SQLRIGHT_RNG_SEED`: fixed random seed (default: the seed AFL++ gives).
@@ -49,6 +51,9 @@ impl Config {
             max_cases_per_seed: var("SQLRIGHT_MAX_CASES")
                 .and_then(|v| v.parse().ok())
                 .unwrap_or(2000),
+            max_bytes_per_seed: var("SQLRIGHT_MAX_BYTES")
+                .and_then(|v| v.parse().ok())
+                .unwrap_or(64 * 1024 * 1024),
             debug: var("SQLRIGHT_DEBUG").is_some(),
             rng_seed: var("SQLRIGHT_RNG_SEED").and_then(|v| v.parse().ok()),
         }

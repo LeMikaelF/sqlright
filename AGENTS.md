@@ -84,6 +84,7 @@ and repeats the marker in its output.
 | `SQLRIGHT_BUG_DIR` | where bug reports and `stats_<pid>.txt` go | `sqlright_bugs` |
 | `SQLRIGHT_SELECT_COUNT` | oracle SELECTs per test case | 10 |
 | `SQLRIGHT_MAX_CASES` | most test cases from one queue entry | 2000 |
+| `SQLRIGHT_MAX_BYTES` | most bytes of test case text from one queue entry | 67108864 |
 | `SQLRIGHT_RNG_SEED` | fixed random seed | the seed AFL++ gives |
 | `SQLRIGHT_DEBUG` | messages on stderr | off |
 
