@@ -280,6 +280,7 @@ the index rows `1.2` and `1.25`).
 Issue: https://github.com/tursodatabase/turso/issues/11396
 The first camp-index4 report (`bug_INDEX_5ebf3ca377cc1deb`) is the same problem, with
 `WHERE v0.c2 = 'quoted table'` on a `NUMERIC(210, 10)` column.
+`bug_INDEX_09b66ab58b9167bf` (camp-index4) is the same, with `WHERE COALESCE(c2, 1) > 'cm'`.
 
 ## 10. A very large numeric scale makes an insert run for minutes
 
