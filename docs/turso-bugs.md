@@ -446,7 +446,9 @@ https://github.com/tursodatabase/turso/issues/11369.
 Found by: the INDEX oracle, campaign of 2026-11-05 (reports
 `bug_INDEX_84d7e3aca4b9df8c` and `bug_INDEX_0ef60883160771c9`).
 
-Issue: not filed. Draft in `work/issues-draft/01-casts-postgres-does-not-have.md`.
+Issue: https://github.com/tursodatabase/turso/issues/11408. The note about
+declared dimensions is a comment on
+https://github.com/tursodatabase/turso/issues/11369#issuecomment-6648530085.
 
 ## 17. Crash: a multi-row VALUES list with rows of different lengths
 
