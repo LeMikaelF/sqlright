@@ -408,6 +408,37 @@ Found by: the NoREC instance of the 12-hour campaign, round 12h-b, as
 an AFL++ crash (`CREATE TABLE v0 (CONSTRAINT x FOREIGN KEY (x, x) REFERENCES v0 ...)`
 and `ALTER TABLE v0 DROP c`).
 
+## 16. Crash: a VALUES row with more values than the table has columns
+
+tursopg compares only the first row of a multi-row `VALUES` list with
+the column count. A shorter row takes the missing values from the row
+before it. A longer row loses its extra values. A row with many extra
+values writes past the register file and panics.
+
+```sql
+CREATE TABLE t (a INT, b INT);
+INSERT INTO t VALUES (1, 2), (3);                       -- tursopg: stores 3 2
+INSERT INTO t VALUES (1, 2), (3, 4, 5, 6, 7, 8, 9);     -- tursopg: panics
+```
+
+```text
+thread 'main' panicked at core/vdbe/execute.rs:5910:5:
+index out of bounds: the len is 9 but the index is 9
+```
+
+The instruction that panics changes with the type of the extra value:
+`op_integer` (line 5910), `op_real` (line 6227) or `op_string8`
+(line 6257).
+
+Expected PostgreSQL behavior: the error
+`VALUES lists must all be the same length`.
+
+Issue: https://github.com/tursodatabase/turso/issues/11403 (it existed
+before this campaign).
+
+Found by: the NoREC instance of the campaign of 2026-11-05, as two
+AFL++ crashes after 21 minutes.
+
 ## Campaign log
 
 tursopg at submodule commit ff97c22, 4 cores, one `afl-fuzz` instance per
