@@ -16,7 +16,6 @@ use sqlright_mutator::oracle::{AllCompRes, CompRes, OraCompRes, Oracle};
 use sqlright_mutator::Mutator;
 use sqlright_pg_parser::parse_query;
 
-
 pub struct Tlp;
 
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
@@ -44,10 +43,62 @@ const TEMPLATES: &[&str] = &[
     "SELECT AVG(x) FROM x WHERE x=0;",
 ];
 
+/// Aggregate functions of PostgreSQL and of the turso extensions.
+const AGGREGATE_NAMES: &[&str] = &[
+    "count",
+    "sum",
+    "min",
+    "max",
+    "avg",
+    "total",
+    "group_concat",
+    "string_agg",
+    "array_agg",
+    "json_agg",
+    "jsonb_agg",
+    "json_object_agg",
+    "jsonb_object_agg",
+    "json_group_array",
+    "json_group_object",
+    "bool_and",
+    "bool_or",
+    "every",
+    "bit_and",
+    "bit_or",
+    "bit_xor",
+    "stddev",
+    "stddev_pop",
+    "stddev_samp",
+    "variance",
+    "var_pop",
+    "var_samp",
+    "median",
+    "mode",
+    "percentile",
+    "percentile_cont",
+    "percentile_disc",
+    "corr",
+    "covar_pop",
+    "covar_samp",
+    "regr_avgx",
+    "regr_avgy",
+    "regr_count",
+    "regr_intercept",
+    "regr_r2",
+    "regr_slope",
+    "regr_sxx",
+    "regr_sxy",
+    "regr_syy",
+    "xmlagg",
+];
+
 const OUTER_MIN: &str = "SELECT MIN(aggr) FROM (SELECT *) AS subb;";
 const OUTER_MAX: &str = "SELECT MAX(aggr) FROM (SELECT *) AS subb;";
 const OUTER_SUM: &str = "SELECT SUM(aggr) FROM (SELECT *) AS subb;";
-const OUTER_AVG: &str = "SELECT SUM(s)/SUM(c) FROM (SELECT *) AS subb;";
+/// `SUM(s)` and `SUM(c)` are integers for an integer column, and an integer
+/// division drops the fraction of the average (PostgreSQL does the same).
+/// The cast keeps the fraction.
+const OUTER_AVG: &str = "SELECT SUM(s)::FLOAT8/SUM(c) FROM (SELECT *) AS subb;";
 
 /// The text of every oracle SELECT (form 0) in a marked test case.
 pub fn oracle_select_blocks(cmd_str: &str) -> Vec<String> {
@@ -130,6 +181,22 @@ impl Tlp {
         default_type
     }
 
+    /// False for a SELECT whose result the union of its partitions cannot
+    /// give, even on a correct database.
+    fn partitions_give_the_same_rows(t: &IrTree, stmt: IrId) -> bool {
+        let tlp_type = Self::get_stmt_tlp_type(t, stmt);
+        if tlp_type == TlpType::GroupBy && !Self::target_is_grouped(t, stmt) {
+            return false;
+        }
+        // An aggregate inside an expression (`CASE WHEN count(*) = 1 ...`)
+        // makes the whole table one group. The query returns one row, and
+        // the partitioned form returns one row per partition.
+        !(matches!(
+            tlp_type,
+            TlpType::Normal | TlpType::Distinct | TlpType::Having
+        ) && Self::has_aggregate_call(t, stmt))
+    }
+
     /// True when the single select target is one of the GROUP BY
     /// expressions. A column that is neither grouped nor aggregated has an
     /// arbitrary value per group (PostgreSQL rejects the query, tursopg
@@ -143,6 +210,18 @@ impl Tlp {
         ir_wrapper::get_ir_node_in_stmt_with_type(t, stmt, IrType::GroupByItem, false)
             .iter()
             .any(|&item| squeeze(&t.to_string(item)) == target_text)
+    }
+
+    /// True when the statement (not its subqueries) calls an aggregate function.
+    fn has_aggregate_call(t: &IrTree, stmt: IrId) -> bool {
+        ir_wrapper::get_ir_node_in_stmt_with_type(t, stmt, IrType::FuncName, false)
+            .iter()
+            .filter_map(|&func_name| t.left(func_name))
+            .any(|iden| {
+                let name = t.str_val(iden).to_ascii_lowercase();
+                let name = name.rsplit('.').next().unwrap_or(&name).trim();
+                AGGREGATE_NAMES.contains(&name)
+            })
     }
 
     /// The TLP type of every oracle SELECT in a marked test case.
@@ -265,7 +344,7 @@ impl Tlp {
                 work.update_left(res, Some(target));
             }
         } else {
-            // AVG: SUM(x) AS s, COUNT(x) AS c, then SUM(s)/SUM(c) outside.
+            // AVG: SUM(x) AS s, COUNT(x) AS c, then SUM(s)::FLOAT8/SUM(c) outside.
             let func_in_target =
                 *ir_wrapper::get_ir_node_in_stmt_with_type(&work, target, IrType::FuncName, false)
                     .first()?;
@@ -417,8 +496,8 @@ impl Tlp {
     }
 
     /// Compare two aggregate results as numbers. `avg(bigint)` prints as a
-    /// double in tursopg (`-2.77e+18`) while `sum(s) / sum(c)` is an integer,
-    /// so the values are compared with a relative tolerance. The C++ parsed
+    /// double in tursopg (`-2.77e+18`) and the rewritten average is a
+    /// double too, so the values are compared with a relative tolerance. The C++ parsed
     /// both as `int` and reported an error on overflow.
     fn compare_aggr(res: &mut CompRes) -> bool {
         if find_string_in(&res.res_str_0, "ERROR") || find_string_in(&res.res_str_1, "ERROR") {
@@ -516,8 +595,7 @@ impl Oracle for Tlp {
         {
             return false;
         }
-        if Self::get_stmt_tlp_type(t, stmt) == TlpType::GroupBy && !Self::target_is_grouped(t, stmt)
-        {
+        if !Self::partitions_give_the_same_rows(t, stmt) {
             return false;
         }
         !t.is_empty(froms[0]) && !t.is_empty(wheres[0])
@@ -565,6 +643,11 @@ impl Oracle for Tlp {
         first.detach_node(first_root, where_clause);
         first.deep_drop(where_clause);
 
+        // The names are filled in after `is_oracle_select_stmt`: the
+        // template `SELECT x ... GROUP BY x` can become `SELECT c2 ... GROUP BY c1`.
+        if !Self::partitions_give_the_same_rows(t, stmt) {
+            return Vec::new();
+        }
         let tlp_type = Self::get_stmt_tlp_type(t, stmt);
         let second = match tlp_type {
             TlpType::AggrAvg | TlpType::AggrMax | TlpType::AggrMin | TlpType::AggrSum => {
@@ -700,6 +783,46 @@ mod tests {
     }
 
     #[test]
+    fn gives_no_forms_when_the_filled_in_target_is_not_grouped() {
+        let mut m = Mutator::new(3);
+        let mut q = parse_query("SELECT c2 FROM v0 WHERE c2 > 1 GROUP BY c1;").unwrap();
+        let stmt = ir_wrapper::get_first_stmt_from_root(&q.tree, q.root).unwrap();
+        assert!(Tlp
+            .post_fix_transform_select_stmt(&mut m, &mut q.tree, stmt, 0)
+            .is_empty());
+        let mut q = parse_query("SELECT c1 FROM v0 WHERE c2 > 1 GROUP BY c1;").unwrap();
+        let stmt = ir_wrapper::get_first_stmt_from_root(&q.tree, q.root).unwrap();
+        assert_eq!(
+            Tlp.post_fix_transform_select_stmt(&mut m, &mut q.tree, stmt, 0)
+                .len(),
+            2
+        );
+    }
+
+    #[test]
+    fn rejects_an_aggregate_inside_an_expression() {
+        let tlp = Tlp;
+        for sql in [
+            "SELECT CASE WHEN count(*) = count(DISTINCT c1) THEN 1 ELSE 0 END FROM v0 WHERE c1 > 0;",
+            "SELECT DISTINCT sum(c1) + 1 FROM v0 WHERE c1 > 0;",
+        ] {
+            let mut q = sqlright_pg_parser::parse_query(sql).unwrap();
+            let stmt =
+                sqlright_mutator::ir_wrapper::get_first_stmt_from_root(&q.tree, q.root).unwrap();
+            assert!(!tlp.is_oracle_select_stmt(&mut q.tree, stmt), "{sql}");
+        }
+        for sql in [
+            "SELECT c1 + 1 FROM v0 WHERE c1 > 0;",
+            "SELECT c1 FROM v0 WHERE c1 > (SELECT max(c2) FROM v0);",
+        ] {
+            let mut q = sqlright_pg_parser::parse_query(sql).unwrap();
+            let stmt =
+                sqlright_mutator::ir_wrapper::get_first_stmt_from_root(&q.tree, q.root).unwrap();
+            assert!(tlp.is_oracle_select_stmt(&mut q.tree, stmt), "{sql}");
+        }
+    }
+
+    #[test]
     fn partitions_a_normal_select() {
         let mut m = Mutator::new(3);
         let mut q = parse_query("SELECT v1 FROM v0 WHERE v1 > 1;").unwrap();
@@ -737,7 +860,7 @@ mod tests {
             "{text2}"
         );
         assert!(
-            text2.starts_with("SELECT sum ( s ) / sum ( c ) FROM ("),
+            text2.starts_with("SELECT sum ( s ) :: float8 / sum ( c ) FROM ("),
             "{text2}"
         );
         assert!(parse_query(&text2).is_some(), "{text2}");

@@ -40,6 +40,9 @@ pub struct RunArgs {
     /// The time limit for one test case, in milliseconds (afl-fuzz `-t`).
     #[arg(long, default_value_t = 20000)]
     pub timeout_ms: u64,
+    /// The memory limit of the harness, in MB (afl-fuzz `-m`). 0 means no limit.
+    #[arg(long, default_value_t = 4096)]
+    pub mem_mb: u64,
     /// How many oracle SELECTs to add to each test case.
     #[arg(long, default_value_t = 10)]
     pub selects: usize,
@@ -65,6 +68,9 @@ pub fn run(args: RunArgs) -> Result<()> {
     let harness = absolute(&args.harness)?;
     if !harness.is_file() {
         bail!("the harness {} does not exist; build it with `cargo afl build --release` in crates/sqlright-harness-tursopg", harness.display());
+    }
+    if !args.dry_run {
+        check_harness(&harness)?;
     }
     let afl_fuzz = find_afl_fuzz(args.afl_fuzz.as_deref())?;
     let mutator = find_mutator(args.mutator.as_deref())?;
@@ -93,7 +99,11 @@ pub fn run(args: RunArgs) -> Result<()> {
         let mut cmd = Command::new(&afl_fuzz);
         cmd.arg("-i").arg(&input).arg("-o").arg(&out);
         cmd.arg("-t").arg(args.timeout_ms.to_string());
-        cmd.arg("-m").arg("none");
+        if args.mem_mb == 0 {
+            cmd.arg("-m").arg("none");
+        } else {
+            cmd.arg("-m").arg(args.mem_mb.to_string());
+        }
         if let Some(t) = args.time {
             cmd.arg("-V").arg(t.to_string());
         }
@@ -177,6 +187,37 @@ pub fn run(args: RunArgs) -> Result<()> {
     println!("{reports} bug report(s) in {}", bug_dir.display());
     if failed {
         bail!("an afl-fuzz process failed");
+    }
+    Ok(())
+}
+
+/// Run the harness once on `SELECT 1` and fail if it does not print a
+/// result. `cargo afl build` compiles for the CPU of the build machine
+/// (`-C target-cpu=native`), so a harness binary can stop with an illegal
+/// instruction on another machine. afl-fuzz then saves every input as a
+/// crash and sees no coverage.
+fn check_harness(harness: &Path) -> Result<()> {
+    let dir = std::env::temp_dir().join(format!("sqlright-check-{}", std::process::id()));
+    std::fs::create_dir_all(&dir)?;
+    let case_path = dir.join("check.sql");
+    std::fs::write(&case_path, "SELECT 1;\n")?;
+    let result = Command::new(harness)
+        .arg("--replay")
+        .arg(&case_path)
+        .stdin(Stdio::null())
+        .output()
+        .with_context(|| format!("cannot start the harness {}", harness.display()));
+    let _ = std::fs::remove_dir_all(&dir);
+    let output = result?;
+    let stdout = String::from_utf8_lossy(&output.stdout);
+    if !output.status.success() || !stdout.lines().any(|l| l.trim() == "1") {
+        bail!(
+            "the harness {} does not run `SELECT 1` ({}). If the status is an illegal instruction, \
+             the binary was built for another CPU: rebuild it with \
+             `RUSTFLAGS=\"-C target-cpu=x86-64-v3\" cargo afl build --release`",
+            harness.display(),
+            output.status
+        );
     }
     Ok(())
 }

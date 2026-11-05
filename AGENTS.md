@@ -96,8 +96,17 @@ mutations of SQL text only make statements that do not parse.
 cargo build --release                 # the workspace: libsqlright_afl.so and the sqlright command
 cargo install cargo-afl               # once
 cargo afl config --build              # once: builds AFL++ for the pinned toolchain
-cd crates/sqlright-harness-tursopg && cargo afl build --release
+cd crates/sqlright-harness-tursopg && RUSTFLAGS="-C target-cpu=x86-64-v3" cargo afl build --release
 ```
+
+`cargo afl build` compiles for the CPU of the build machine
+(`-C target-cpu=native`). A container can restart on a machine with a
+different CPU. Then the harness stops with an illegal instruction
+(SIGILL) on every input, afl-fuzz saves inputs as crashes and sees no
+coverage. The `RUSTFLAGS` value comes after the cargo-afl flags, so it
+replaces `native` with a common x86-64 level. `sqlright run` runs the
+harness on `SELECT 1` before it starts afl-fuzz and stops if the harness
+fails.
 
 The harness is a separate workspace because it links turso from the
 submodule, and because `cargo afl build` instruments every crate it
@@ -188,6 +197,15 @@ purpose:
   GROUP BY expressions. tursopg accepts a target that is neither grouped
   nor aggregated (PostgreSQL rejects it) and returns the value of some row
   of the group, which depends on the plan.
+- The TLP oracle checks the GROUP BY target again after the names are
+  filled in. The template `SELECT x ... GROUP BY x` passes the first check
+  and can become `SELECT c2 ... GROUP BY c1`.
+- The TLP oracle does not take a plain, DISTINCT or HAVING SELECT that
+  calls an aggregate inside an expression (`CASE WHEN count(*) = 1 ...`).
+  Such a query returns one row, and the union of the partitions returns
+  one row per partition.
+- The TLP rewrite of `avg` is `sum(s)::float8 / sum(c)`. Without the cast,
+  the integer division drops the fraction (PostgreSQL does the same).
 - The output of the harness has a first line with the hash of the input.
   The oracle only compares output that belongs to the test case it sent.
 - The harness prints the result markers (`SELECT 'BEGIN VERI n'`) itself

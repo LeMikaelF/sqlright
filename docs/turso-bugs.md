@@ -99,7 +99,16 @@ INSERT INTO v1 VALUES (0);
 SELECT count(*) FROM v1 WHERE c1 = 0;  -- 0                  (no index: consistent with the expression)
 ```
 
-The same happens with a `UNIQUE` index instead of the primary key. With a
+The same happens with a `UNIQUE` index instead of the primary key. The
+same happens with a `time` column: `INSERT INTO v0 VALUES (0)` stores
+`12:00:00`, `c1 = 0` is false as an expression, and the index finds the
+row (12-hour campaign, round 12h-b, NoREC). A `timestamptz` column
+with an index does the same: `INSERT INTO t VALUES (2)` stores
+`-4713-11-26 12:00:00`, `c = '2'` is false as an expression, and
+`WHERE c = '2'` finds the row only through the index (round 12h-b, INDEX).
+A `jsonb` primary key does the same: after `INSERT INTO t VALUES (1), (2), (6)`,
+`WHERE c = 6` counts 1 row and `WHERE NOT (c = 6)` counts 3 rows, so
+`sum(c)` over the TLP partitions is 15 instead of 9 (round 12h-b, TLP). With a
 valid date (`INSERT INTO v0 VALUES ('2024-01-02')`) both forms agree.
 PostgreSQL rejects the insert (`column "c1" is of type date but expression
 is of type integer`), so the first problem is the accepted insert; given
@@ -156,6 +165,248 @@ with a relative tolerance.
 
 Issue: https://github.com/tursodatabase/turso/issues/11388.
 Related: https://github.com/tursodatabase/turso/issues/9605 covers `sum()` and `avg()` of `numeric(p,s)` columns.
+
+## 7. Crash: extension aggregate in a WHERE clause
+
+An extension aggregate (`percentile_cont`, `median`, `stddev`) in a
+WHERE clause panics. A built-in aggregate in the same place gives an
+error. The planner does not reject the extension aggregate, so the
+program calls it as a scalar function.
+
+```sql
+CREATE TABLE t (a INTEGER);
+INSERT INTO t VALUES (1);
+SELECT a FROM t WHERE median(a) = 1;
+```
+
+```text
+thread 'main' panicked at core/ext/function.rs:91:18:
+internal error: entered unreachable code: aggregate called in scalar context
+```
+
+The panic is in `ExtFunc::call_scalar`, called from `op_function`.
+`SELECT a FROM t WHERE sum(a) = 1` gives `misuse of aggregate function sum()`.
+`SELECT 1 WHERE percentile_cont(0.5, 1) = 1` panics too, so a table is
+not necessary.
+
+Expected PostgreSQL behavior: the error `aggregate functions are not
+allowed in WHERE`.
+
+This is not finding 1. Finding 1 is a slice index panic in
+`ExtFunc::step_aggregate` with GROUP BY.
+
+Found by: the NoREC oracle, 12-hour campaign. AFL++ saved it as a crash
+after 88 seconds (`SELECT count(*) FROM v0 WHERE c1 @> percentile_cont(c2, c1)`).
+
+## 8. ON CONFLICT DO UPDATE SET is not checked on a table without an index
+
+An unknown column in the SET list of `ON CONFLICT DO UPDATE` gives an
+error only when the table has an index. On a table without an index,
+the statement inserts the row. Thus a `CREATE INDEX` changes whether
+an insert succeeds.
+
+```sql
+CREATE TABLE t (a INTEGER, b INTEGER);
+INSERT INTO t VALUES (6, 7) ON CONFLICT DO UPDATE SET nosuch = t.a;   -- tursopg: inserts the row
+SELECT count(*) FROM t;                                               -- tursopg: 1
+CREATE TABLE u (a INTEGER, b INTEGER);
+CREATE INDEX ub ON u (b);
+INSERT INTO u VALUES (6, 7) ON CONFLICT DO UPDATE SET nosuch = u.a;   -- tursopg: ERROR:  no such column: nosuch
+SELECT count(*) FROM u;                                               -- tursopg: 0
+```
+
+A table with a primary key gives the error too. tursopg also accepts
+`ON CONFLICT DO UPDATE` without a conflict target.
+
+Expected PostgreSQL behavior: both inserts fail. Without a conflict
+target, the error is `ON CONFLICT DO UPDATE requires inference
+specification or constraint name`. With a target, an unknown column
+gives `column "nosuch" of relation "t" does not exist`.
+
+Found by: the INDEX oracle, 12-hour campaign (the row counts of the run
+with indexes and the run without indexes were different).
+
+## 9. A partial index with an invalid literal makes every insert fail
+
+tursopg accepts a partial index whose predicate compares a `numeric`
+column with a string that is not a number. Then every insert into the
+table fails. Without the index, the same insert succeeds.
+
+```sql
+CREATE TABLE t (c NUMERIC(10, 1));
+CREATE INDEX i ON t (c) WHERE c > 'x';     -- tursopg: accepted
+INSERT INTO t VALUES (1.2);                -- tursopg: ERROR:  invalid input syntax for type numeric: "x"
+SELECT count(*) FROM t;                    -- tursopg: 0 (1 without the index)
+```
+
+The same index on an `integer` column does not block the insert.
+
+Expected PostgreSQL behavior: `CREATE INDEX` fails with
+`invalid input syntax for type numeric: "x"`, because PostgreSQL converts
+the literal when it makes the index.
+
+Found by: the INDEX oracle, 12-hour campaign (one of three reports with
+the index rows `1.2` and `1.25`).
+
+## 10. A very large numeric scale makes an insert run for minutes
+
+tursopg accepts any precision and scale in `NUMERIC(p, s)`. An insert
+into such a column takes time that increases with the square of the scale.
+
+```sql
+CREATE TABLE t (c NUMERIC(852292321, 852292321));   -- tursopg: accepted
+INSERT INTO t VALUES (0.5);                          -- tursopg: does not stop in 60 seconds
+```
+
+Measured times for `INSERT INTO t VALUES (0.5)`: 2.0 seconds for a
+scale of 1,000,000, 7.4 seconds for 2,000,000 and 30 seconds for
+4,000,000. The harness has no time limit of its own, so AFL++ saves the
+test case as a hang.
+
+Expected PostgreSQL behavior: `CREATE TABLE` fails with
+`NUMERIC precision 852292321 must be between 1 and 1000`.
+
+Found by: the INDEX instance of the 12-hour campaign, as an AFL++ hang
+(`default/hangs/`).
+
+## 11. A bare column in a HAVING query without GROUP BY is NULL after a table scan
+
+A query with an aggregate in HAVING and no GROUP BY treats the whole
+table as one group. A column that is not inside an aggregate is NULL
+in that query when the plan scans the table. With a rowid lookup, the
+same column has the value of the row. Thus a WHERE clause that is true
+for every row changes the result.
+
+```sql
+CREATE TABLE t (a INT);
+INSERT INTO t VALUES (5);
+SELECT a, a IS NULL FROM t HAVING sum(a) > 0;                    -- tursopg: NULL 1
+SELECT a, a IS NULL FROM t WHERE oid = 1 HAVING sum(a) > 0;      -- tursopg: 5 0
+SELECT count(*) FROM t HAVING sum(a) > 0 AND a > 0;              -- tursopg: no row
+SELECT count(*) FROM t WHERE oid = 1 HAVING sum(a) > 0 AND a > 0; -- tursopg: 1
+```
+
+`SELECT a, sum(a) FROM t` without HAVING returns `5 5`. With
+`GROUP BY 'x'` the HAVING query returns `5` too. Thus only the path
+without GROUP BY loses the column value. A possible cause (not examined
+in the turso code): the scan cursor is past the last row when the
+program reads the column.
+
+Expected PostgreSQL behavior: all four queries fail with
+`column "t.a" must appear in the GROUP BY clause or be used in an
+aggregate function`. Finding 5 is the same missing check for GROUP BY.
+Given the accepted query, the two plans must still agree. SQLite 3.53.1
+rejects the first query with `HAVING clause on a non-aggregate query`.
+
+Found by: the TLP oracle, 12-hour campaign, round 12h-b
+(`SELECT * FROM v0 HAVING sum(c2) > v0.c2 * 'c'` against its partition on `oid = 1`).
+
+## 12. Crash: make_date with a very large day number
+
+`make_date` and `make_timestamp` panic when the day number moves the
+date past the range of the `chrono` date type.
+
+```sql
+SELECT make_date(1, 4, 1453556443);
+```
+
+```text
+thread 'main' panicked at chrono-0.4.42/src/naive/datetime/mod.rs:1635:38:
+`NaiveDateTime + TimeDelta` overflowed
+```
+
+The panic comes from `dt += d` in `Time::time_date`
+(`core/time/internal.rs:249`), called from `time_date_internal`
+(`core/time/mod.rs:194`). The code makes sure that the day count fits
+in a `chrono::Duration` (`try_days`), but it does not use a checked
+addition. A day number of 3,000,000 does not panic.
+`SELECT make_timestamp(2024, 1, 1453556443, 0, 0, 0)` panics the same way.
+
+Expected PostgreSQL behavior: the error
+`date field value out of range: 1-04-1453556443`.
+
+Found by: the INDEX instance of the 12-hour campaign, round 12h-b, as
+an AFL++ crash (`SELECT make_date(TRUE, 4, 1453556443) FROM (VALUES ...)`).
+
+## 13. make_date returns a blob
+
+In PostgreSQL, `make_date(2024, 1, 1)` returns the date `2024-01-01`.
+In tursopg, the name resolves to the function of the turso time
+extension, which returns its own binary time value.
+
+```sql
+SELECT make_date(2024, 1, 1);           -- tursopg: 13 bytes of binary data   PostgreSQL: 2024-01-01
+SELECT typeof(make_date(2024, 1, 1));   -- tursopg: blob
+```
+
+Expected PostgreSQL behavior: a value of type `date`.
+
+Found by: the reduction of finding 12.
+
+## 14. Crash: stack overflow on a nested CTE with the same name
+
+A CTE that defines an inner CTE with the same name, and reads it
+through a subquery, makes the planner recurse until the stack
+overflows.
+
+```sql
+WITH t AS (WITH t AS (SELECT 7) SELECT * FROM (SELECT * FROM t))
+SELECT * FROM (SELECT * FROM t);
+```
+
+```text
+thread 'main' has overflowed its stack
+fatal runtime error: stack overflow, aborting
+```
+
+The stack repeats `prepare_select_plan` (`core/translate/select.rs:174`),
+`parse_from` (`core/translate/planner.rs:2489`) and `parse_table`
+(`core/translate/planner.rs:2086`, the CTE branch). Thus the `t` in the
+inner subquery refers to the outer CTE again, not to the inner one.
+Without one of the two subqueries the query returns `7`:
+`WITH t AS (WITH t AS (SELECT 7) SELECT * FROM t) SELECT * FROM (SELECT * FROM t)`.
+
+Expected behavior: the result `7`. PostgreSQL gives it, and SQLite
+3.53.1 gives it too. The planner is in `core/`, so the SQLite frontend
+can have the same crash (not examined).
+
+Found by: the NoREC instance of the 12-hour campaign, round 12h-b, as
+an AFL++ crash (an `INSERT INTO v0 WITH x AS (... WITH x AS (...) ...)`
+statement with four levels of CTEs named `x`).
+
+## 15. Crash: ALTER TABLE DROP on a table that has only a table constraint
+
+tursopg rejects `CREATE TABLE t ()`, but it accepts a table that has
+only a table constraint and no columns. Then `ALTER TABLE ... DROP`
+fails an assertion.
+
+```sql
+CREATE TABLE t (CONSTRAINT x CHECK (1 > 0));   -- tursopg: accepted, a table with no columns
+ALTER TABLE t DROP c;
+```
+
+```text
+thread 'main' panicked at core/translate/alter.rs:893:13:
+assertion `left != right` failed: btree.columns().len() != 0
+```
+
+The assertion is in the `DropColumn` branch of the ALTER TABLE
+translation ("Tables always have at least one column"). The same table
+with `FOREIGN KEY (x) REFERENCES t` is accepted too, although the
+column `x` does not exist. `SELECT count(*) FROM t` returns `0`.
+
+A related error message is wrong: for `CREATE TABLE t (a int)`,
+`ALTER TABLE t DROP c` gives `cannot drop column "c": no other columns exist`.
+
+Expected PostgreSQL behavior: PostgreSQL permits a table with no
+columns, so `CREATE TABLE` succeeds. Then `ALTER TABLE t DROP c` fails
+with `column "c" of relation "t" does not exist`. For the foreign key
+form, `CREATE TABLE` fails with
+`column "x" referenced in foreign key constraint does not exist`.
+
+Found by: the NoREC instance of the 12-hour campaign, round 12h-b, as
+an AFL++ crash (`CREATE TABLE v0 (CONSTRAINT x FOREIGN KEY (x, x) REFERENCES v0 ...)`
+and `ALTER TABLE v0 DROP c`).
 
 ## Campaign log
 
