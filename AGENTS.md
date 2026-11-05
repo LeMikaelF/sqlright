@@ -295,6 +295,19 @@ purpose:
   error message, and the result extraction split the output there.
 - The harness prints `ERROR:  <message>` for a failed statement, like the
   C++ PostgreSQL client did, so the result extraction is unchanged.
+- `min(a, b)` and `max(a, b)` with two or more arguments are scalar
+  functions in tursopg (as in SQLite). The INDEX and TLP oracles do not take
+  them for aggregates. The C++ took them for aggregates, compared only the
+  first row, and reported a difference of the row order. The INDEX oracle
+  also matches the function name exactly now (`summary` is not `sum`).
+- A verdict of Fail becomes Error when the output has the line
+  `ERROR:  interrupt`. That is a statement that hit the 2-second limit of
+  the harness. It stops at a point that depends on timing, so the INDEX
+  oracle found a difference between its runs (a rolled back insert of
+  100,000 rows left a different state).
+- A test case with the literal `9223372036854775807` is not checked. After a
+  row gets the largest rowid, tursopg picks a random rowid for the next row
+  (as SQLite does), so a `serial` key has a different value in each run.
 
 ## When a campaign reports hundreds of failures
 

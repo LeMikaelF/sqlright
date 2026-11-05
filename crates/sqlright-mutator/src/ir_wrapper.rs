@@ -269,6 +269,41 @@ pub fn get_ir_node_in_stmt_with_type(
     get_ir_node_in_stmt_with_type_full(t, stmt, ty, is_subquery, false, true)
 }
 
+/// The number of arguments of the function call whose name node is
+/// `func_name`. It is the number of `FuncArgList` nodes along the left side of
+/// the argument list. The result is `None` for a call this function does not
+/// read (for example `count(*)` or a call with a VARIADIC argument).
+pub fn func_arg_count(t: &IrTree, func_name: IrId) -> Option<usize> {
+    let call = t.parent(func_name)?;
+    match t.ty(call) {
+        // `f()`: the name is the only child.
+        IrType::FuncApplication if t.right(call).is_none() => Some(0),
+        // `f(a, b)`: the name and the argument list are the two children.
+        IrType::FuncApplication_1 => {
+            let mut count = 0;
+            let mut list = t.right(call);
+            while let Some(node) = list {
+                if t.ty(node) != IrType::FuncArgList {
+                    break;
+                }
+                count += 1;
+                list = t.left(node);
+            }
+            Some(count)
+        }
+        _ => None,
+    }
+}
+
+/// True for `min(a, b)` and `max(a, b)` (the function name is `name`). With
+/// two or more arguments they are scalar functions in tursopg, as in SQLite.
+/// They return one row for each input row and are not aggregates.
+pub fn is_scalar_min_max(t: &IrTree, func_name: IrId, name: &str) -> bool {
+    let lower = name.to_ascii_lowercase();
+    let base = lower.rsplit('.').next().unwrap_or(&lower).trim();
+    matches!(base, "min" | "max") && func_arg_count(t, func_name).is_some_and(|n| n >= 2)
+}
+
 pub fn is_exist_ir_node_in_stmt_with_type(
     t: &IrTree,
     stmt: IrId,
