@@ -888,9 +888,18 @@ mod tests {
             )
         };
         // One argument: the aggregate. Two or more: the scalar function.
-        assert_eq!(tlp_type("SELECT max(c) FROM t WHERE c;"), (TlpType::AggrMax, true));
-        assert_eq!(tlp_type("SELECT max(c, 80) FROM t WHERE c;"), (TlpType::Normal, false));
-        assert_eq!(tlp_type("SELECT min(c, 1, 2) FROM t WHERE c;"), (TlpType::Normal, false));
+        assert_eq!(
+            tlp_type("SELECT max(c) FROM t WHERE c;"),
+            (TlpType::AggrMax, true)
+        );
+        assert_eq!(
+            tlp_type("SELECT max(c, 80) FROM t WHERE c;"),
+            (TlpType::Normal, false)
+        );
+        assert_eq!(
+            tlp_type("SELECT min(c, 1, 2) FROM t WHERE c;"),
+            (TlpType::Normal, false)
+        );
     }
 
     #[test]

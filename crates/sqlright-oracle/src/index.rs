@@ -297,15 +297,36 @@ mod tests {
     #[test]
     fn a_scalar_min_or_max_is_not_an_aggregate() {
         // One argument: the aggregate. Two or more: the scalar function.
-        assert_eq!(index_type_of("SELECT max(c) FROM t WHERE c;"), IndexType::Aggr);
-        assert_eq!(index_type_of("SELECT min(c) FROM t WHERE c;"), IndexType::Aggr);
-        assert_eq!(index_type_of("SELECT max(c, 80) FROM t WHERE c;"), IndexType::Normal);
-        assert_eq!(index_type_of("SELECT min(c, 1, 2) FROM t WHERE c;"), IndexType::Normal);
+        assert_eq!(
+            index_type_of("SELECT max(c) FROM t WHERE c;"),
+            IndexType::Aggr
+        );
+        assert_eq!(
+            index_type_of("SELECT min(c) FROM t WHERE c;"),
+            IndexType::Aggr
+        );
+        assert_eq!(
+            index_type_of("SELECT max(c, 80) FROM t WHERE c;"),
+            IndexType::Normal
+        );
+        assert_eq!(
+            index_type_of("SELECT min(c, 1, 2) FROM t WHERE c;"),
+            IndexType::Normal
+        );
         // Other aggregates and count(*) stay aggregates.
-        assert_eq!(index_type_of("SELECT count(*) FROM t WHERE c;"), IndexType::Aggr);
-        assert_eq!(index_type_of("SELECT sum(c) FROM t WHERE c;"), IndexType::Aggr);
+        assert_eq!(
+            index_type_of("SELECT count(*) FROM t WHERE c;"),
+            IndexType::Aggr
+        );
+        assert_eq!(
+            index_type_of("SELECT sum(c) FROM t WHERE c;"),
+            IndexType::Aggr
+        );
         // A name that only contains an aggregate name is not an aggregate.
-        assert_eq!(index_type_of("SELECT summary(c) FROM t WHERE c;"), IndexType::Normal);
+        assert_eq!(
+            index_type_of("SELECT summary(c) FROM t WHERE c;"),
+            IndexType::Normal
+        );
     }
 
     #[test]

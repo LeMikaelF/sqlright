@@ -595,7 +595,9 @@ mod tests {
             "INSERT INTO v0 (c1) SELECT '9223372036854775807'::float8::int8;"
         ));
         assert!(is_non_deterministic("SELECT random();"));
-        assert!(!is_non_deterministic("INSERT INTO v0 VALUES (9223372036854775);"));
+        assert!(!is_non_deterministic(
+            "INSERT INTO v0 VALUES (9223372036854775);"
+        ));
     }
 
     #[test]
@@ -616,10 +618,14 @@ mod tests {
             let stmt = ir_wrapper::get_first_stmt_from_root(&q.tree, q.root).unwrap();
             q.tree.extract(stmt)
         };
-        assert!(has_row_constructor(&tree("SELECT count(*) FROM v0 WHERE c1 << box((1, 2), (3, 4));")));
+        assert!(has_row_constructor(&tree(
+            "SELECT count(*) FROM v0 WHERE c1 << box((1, 2), (3, 4));"
+        )));
         assert!(has_row_constructor(&tree("SELECT (1, 2) = (3, 4);")));
         assert!(has_row_constructor(&tree("SELECT ROW(1, 2);")));
-        assert!(!has_row_constructor(&tree("SELECT count(*) FROM v0 WHERE c1 IN (1, 2) AND f(c1, 2) > 0;")));
+        assert!(!has_row_constructor(&tree(
+            "SELECT count(*) FROM v0 WHERE c1 IN (1, 2) AND f(c1, 2) > 0;"
+        )));
     }
 
     #[test]
