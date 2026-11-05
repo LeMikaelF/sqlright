@@ -215,6 +215,18 @@ purpose:
   out BEGIN, COMMIT, ROLLBACK and SAVEPOINT statements by default.
 - The harness prints `ERROR:  <message>` for a failed statement, like the
   C++ PostgreSQL client did, so the result extraction is unchanged.
+- The mutation library does not take a result marker statement
+  (`SELECT 'END VERI 0'`) from a saved test case. A mutation could put the
+  marker text into an oracle SELECT, and a row with that text moved the
+  borders of the result blocks. The comparison also gives an error when
+  the marker lines of an output are not in pairs.
+- The NoREC oracle does not take `SELECT count(*) INTO t ...`. That
+  statement makes a table and returns no row, and the rewrite returns
+  the count.
+- The TLP oracle does not take an aggregate SELECT with a HAVING clause,
+  or a grouped SELECT with an aggregate in HAVING. Each partition keeps
+  the HAVING clause, and an aggregate in it sees only the rows of that
+  partition.
 
 ## When a campaign reports hundreds of failures
 

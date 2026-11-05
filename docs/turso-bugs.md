@@ -432,3 +432,30 @@ mutation library is the same set.
 The INDEX oracle ran once for two hours with the first harness build. The
 NoREC and TLP rounds after the first used the harness that prints the
 result markers itself and the seeds without transaction statements.
+
+### Second 12-hour campaign (2026-11-05, `camp`)
+
+Three instances (NoREC, TLP, INDEX) ran for 43,200 seconds each, from
+02:34Z to 14:35Z. The campaign found no new turso problem. Each report,
+crash and hang matched an existing issue or was a SQLRight false
+positive.
+
+| Oracle | Runs | Cases checked | Reports | Crashes | Hangs | What they were |
+|---|---|---|---|---|---|---|
+| NoREC | 1,307k | 1,173,371 | 23 | 119 | 27 | 19 reports: #11386 (date, timestamptz and jsonb keys) and #11011 (a date key compared with `'2000-01-01 00:00:00+00:00'`). 4 reports: result marker text in a data row (SQLRight bug). 1 pair: `SELECT count(*) INTO t` (SQLRight bug). Crashes: #11403 (110), #11398 (5), #11402 (2), #11416 (2). Hangs: #11397 (large NUMERIC scale) and `lpad` (#11413). |
+| TLP | 841k | 687,176 | 32 | 10 | 19 | 18 reports: result marker text (SQLRight bug). 12 reports: an aggregate SELECT with HAVING (SQLRight bug). 1 report: #7977. 1 report: #11386. Crashes: #11403. Hangs: `lpad` (#11413), #11397, a 924-million-character insert. |
+| INDEX | 235k | 153,948 | 12 | 0 | 19 | #11408 (4), #11396 (2), #9663 (2), #11407 (2). 2 reports: an index on `1 / c` makes an insert fail with division by zero. PostgreSQL does the same, so this is not a turso bug. Hangs: `lpad` (#11413), a `generate_series` with a huge bound. |
+
+The `lpad` hangs are a new form of #11413. The query timeout does not
+stop `lpad` with a large length. `lpad` takes about 30 ns for each
+character, about 10 times longer than `repeat`. A comment on #11413 has
+the measurements:
+https://github.com/tursodatabase/turso/issues/11413#issuecomment-6650992695
+
+The three SQLRight bugs are fixed in the oracle and the mutator (see
+`AGENTS.md`, "Differences from the C++ code"). The running instances
+used the old library, so the false positives continued until the end.
+
+Some queue entries take 2 to 4 seconds for each case: a statement runs
+into the 2 second statement timeout of the harness, two times for the
+INDEX oracle. Then an instance can work on one entry for hours.
