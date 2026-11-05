@@ -131,6 +131,14 @@ impl Oracle for Norec {
         {
             return false;
         }
+        // `SELECT count(*) INTO t FROM ...` makes a table and returns no
+        // row. The rewrite has no INTO clause and returns the count.
+        if ir_wrapper::get_ir_node_in_stmt_with_type(t, stmt, IrType::IntoClause, false)
+            .iter()
+            .any(|&c| !t.is_empty(c))
+        {
+            return false;
+        }
         Self::has_count_star(t, stmt)
     }
 
@@ -286,6 +294,13 @@ mod tests {
         let mut q = parse_query("SELECT count(*) FROM v0 WHERE v1 < 10;").unwrap();
         let stmt = ir_wrapper::get_first_stmt_from_root(&q.tree, q.root).unwrap();
         assert!(Norec.is_oracle_select_stmt(&mut q.tree, stmt));
+    }
+
+    #[test]
+    fn rejects_an_into_clause() {
+        let mut q = parse_query("SELECT count(*) INTO v16 FROM v8 WHERE c10 = 'n';").unwrap();
+        let stmt = ir_wrapper::get_first_stmt_from_root(&q.tree, q.root).unwrap();
+        assert!(!Norec.is_oracle_select_stmt(&mut q.tree, stmt));
     }
 
     #[test]
