@@ -260,6 +260,37 @@ Expected PostgreSQL behavior: `CREATE TABLE` fails with
 Found by: the INDEX instance of the 12-hour campaign, as an AFL++ hang
 (`default/hangs/`).
 
+## 11. A bare column in a HAVING query without GROUP BY is NULL after a table scan
+
+A query with an aggregate in HAVING and no GROUP BY treats the whole
+table as one group. A column that is not inside an aggregate is NULL
+in that query when the plan scans the table. With a rowid lookup, the
+same column has the value of the row. Thus a WHERE clause that is true
+for every row changes the result.
+
+```sql
+CREATE TABLE t (a INT);
+INSERT INTO t VALUES (5);
+SELECT a, a IS NULL FROM t HAVING sum(a) > 0;                    -- tursopg: NULL 1
+SELECT a, a IS NULL FROM t WHERE oid = 1 HAVING sum(a) > 0;      -- tursopg: 5 0
+SELECT count(*) FROM t HAVING sum(a) > 0 AND a > 0;              -- tursopg: no row
+SELECT count(*) FROM t WHERE oid = 1 HAVING sum(a) > 0 AND a > 0; -- tursopg: 1
+```
+
+`SELECT a, sum(a) FROM t` without HAVING returns `5 5`. With
+`GROUP BY 'x'` the HAVING query returns `5` too. Thus only the path
+without GROUP BY loses the column value. A possible cause (not examined
+in the turso code): the scan cursor is past the last row when the
+program reads the column.
+
+Expected PostgreSQL behavior: all four queries fail with
+`column "t.a" must appear in the GROUP BY clause or be used in an
+aggregate function`. Finding 5 is the same missing check for GROUP BY.
+Given the accepted query, the two plans must still agree.
+
+Found by: the TLP oracle, 12-hour campaign, round 12h-b
+(`SELECT * FROM v0 HAVING sum(c2) > v0.c2 * 'c'` against its partition on `oid = 1`).
+
 ## Campaign log
 
 tursopg at submodule commit ff97c22, 4 cores, one `afl-fuzz` instance per
