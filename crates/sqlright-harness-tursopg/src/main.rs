@@ -33,6 +33,13 @@ const STATEMENT_TIMEOUT: Duration = Duration::from_secs(2);
 /// limit and the harness aborts, which AFL++ saves as a crash.
 const MAX_STATEMENT_OUTPUT: usize = 16 * 1024 * 1024;
 
+/// A number with this many digits or more, in a statement that calls `repeat`,
+/// `lpad` or `rpad`, makes the harness skip the statement.
+const HUGE_NUMBER_DIGITS: usize = 8;
+
+/// The error message for a statement that `makes_huge_string` stops.
+const SKIPPED_HUGE_STRING: &str = "sqlright: skipped, a number in the statement is too large for repeat, lpad or rpad";
+
 /// The error message for a statement whose rows are larger than `MAX_STATEMENT_OUTPUT`.
 const OUTPUT_TOO_LARGE: &str = "sqlright: the result is larger than 16 MiB";
 
@@ -142,6 +149,10 @@ fn run_one(conn: &Connection, sql: &str, out: &mut Vec<u8>) {
         let _ = writeln!(out, "{marker} ");
         return;
     }
+    if makes_huge_string(sql) {
+        let _ = writeln!(out, "ERROR:  {SKIPPED_HUGE_STRING}");
+        return;
+    }
     match conn.query(sql) {
         Ok(Some(mut stmt)) => {
             stmt.set_query_timeout_override(Some(Some(STATEMENT_TIMEOUT)));
@@ -184,6 +195,31 @@ fn result_marker(sql: &str) -> Option<&str> {
     let inner = quoted.strip_prefix('\'')?.strip_suffix('\'')?;
     let is_marker = inner.strip_prefix("BEGIN VERI ").or_else(|| inner.strip_prefix("END VERI ")).map(|n| !n.is_empty() && n.bytes().all(|b| b.is_ascii_digit())).unwrap_or(false);
     is_marker.then_some(inner)
+}
+
+/// True when the statement calls `repeat`, `lpad` or `rpad` and has a number of
+/// 8 or more digits (10 million or more). Such a statement makes a string of
+/// hundreds of megabytes. Operations on it (LIKE, for example) take many
+/// seconds and gigabytes of memory, and the fuzzer stops making progress.
+/// Turso issues 11411 and 11417 cover this.
+fn makes_huge_string(sql: &str) -> bool {
+    let lower = sql.to_ascii_lowercase();
+    let calls_string_maker = ["repeat", "lpad", "rpad"].iter().any(|name| lower.contains(&format!("{name}(")) || lower.contains(&format!("{name} (")));
+    if !calls_string_maker {
+        return false;
+    }
+    let mut digits_in_row = 0;
+    for b in lower.bytes() {
+        if b.is_ascii_digit() {
+            digits_in_row += 1;
+            if digits_in_row >= HUGE_NUMBER_DIGITS {
+                return true;
+            }
+        } else {
+            digits_in_row = 0;
+        }
+    }
+    false
 }
 
 /// The number of bytes that a value takes in the output, without the separator.
