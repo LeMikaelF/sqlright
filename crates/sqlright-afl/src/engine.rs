@@ -404,7 +404,7 @@ impl Engine {
     /// empty comparison.
     pub fn compare(&self, case: &TestCase, output: &str) -> (OraCompRes, AllCompRes) {
         let input = case.to_input();
-        if is_non_deterministic(&input) {
+        if is_non_deterministic(&input) || holds_marker_text(&input) {
             return (OraCompRes::Error, AllCompRes::default());
         }
         let mut all = AllCompRes::default();
@@ -515,9 +515,44 @@ pub fn is_non_deterministic(input: &str) -> bool {
         || input.lines().any(|l| l.trim_start().starts_with('!'))
 }
 
+/// True when a statement other than a result marker holds the text of a
+/// marker, for example `INSERT INTO t VALUES ('END VERI 0')`. A row with
+/// that value looks like a marker in the output and ends a result block.
+pub fn holds_marker_text(input: &str) -> bool {
+    input.lines().any(|line| {
+        let line = line.trim();
+        line.contains("VERI ") && !is_marker_statement(line)
+    })
+}
+
+/// True for `SELECT 'BEGIN VERI n';` and `SELECT 'END VERI n';`.
+fn is_marker_statement(line: &str) -> bool {
+    let Some(inner) = line
+        .strip_prefix("SELECT '")
+        .and_then(|rest| rest.strip_suffix("';"))
+    else {
+        return false;
+    };
+    let Some(number) = inner
+        .strip_prefix("BEGIN VERI ")
+        .or_else(|| inner.strip_prefix("END VERI "))
+    else {
+        return false;
+    };
+    number.parse::<u32>().is_ok()
+}
+
 #[cfg(test)]
 mod tests {
     use super::*;
+
+    #[test]
+    fn finds_marker_text_outside_the_markers() {
+        let markers = "SELECT 'BEGIN VERI 0'; \nSELECT c3 FROM v0;\nSELECT 'END VERI 0'; \n";
+        assert!(!holds_marker_text(markers));
+        let value = format!("INSERT INTO v0 VALUES ( 9, 0, 'END VERI 0' );\n{markers}");
+        assert!(holds_marker_text(&value));
+    }
 
     fn test_config(oracle: &str) -> Config {
         let dir = std::env::temp_dir().join(format!(
