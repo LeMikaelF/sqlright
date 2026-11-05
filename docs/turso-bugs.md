@@ -374,6 +374,40 @@ Found by: the NoREC instance of the 12-hour campaign, round 12h-b, as
 an AFL++ crash (an `INSERT INTO v0 WITH x AS (... WITH x AS (...) ...)`
 statement with four levels of CTEs named `x`).
 
+## 15. Crash: ALTER TABLE DROP on a table that has only a table constraint
+
+tursopg rejects `CREATE TABLE t ()`, but it accepts a table that has
+only a table constraint and no columns. Then `ALTER TABLE ... DROP`
+fails an assertion.
+
+```sql
+CREATE TABLE t (CONSTRAINT x CHECK (1 > 0));   -- tursopg: accepted, a table with no columns
+ALTER TABLE t DROP c;
+```
+
+```text
+thread 'main' panicked at core/translate/alter.rs:893:13:
+assertion `left != right` failed: btree.columns().len() != 0
+```
+
+The assertion is in the `DropColumn` branch of the ALTER TABLE
+translation ("Tables always have at least one column"). The same table
+with `FOREIGN KEY (x) REFERENCES t` is accepted too, although the
+column `x` does not exist. `SELECT count(*) FROM t` returns `0`.
+
+A related error message is wrong: for `CREATE TABLE t (a int)`,
+`ALTER TABLE t DROP c` gives `cannot drop column "c": no other columns exist`.
+
+Expected PostgreSQL behavior: PostgreSQL permits a table with no
+columns, so `CREATE TABLE` succeeds. Then `ALTER TABLE t DROP c` fails
+with `column "c" of relation "t" does not exist`. For the foreign key
+form, `CREATE TABLE` fails with
+`column "x" referenced in foreign key constraint does not exist`.
+
+Found by: the NoREC instance of the 12-hour campaign, round 12h-b, as
+an AFL++ crash (`CREATE TABLE v0 (CONSTRAINT x FOREIGN KEY (x, x) REFERENCES v0 ...)`
+and `ALTER TABLE v0 DROP c`).
+
 ## Campaign log
 
 tursopg at submodule commit ff97c22, 4 cores, one `afl-fuzz` instance per
