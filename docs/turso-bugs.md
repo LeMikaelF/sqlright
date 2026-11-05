@@ -432,6 +432,30 @@ and `ALTER TABLE v0 DROP c`).
 
 Issue: https://github.com/tursodatabase/turso/issues/11402
 
+## 16. LIKE on a long string uses about 5 times its size in memory
+
+tursopg's LIKE copies both operands into a `Vec<char>` (4 bytes per
+character) before it compares them. A LIKE with a pattern that is not
+a constant is slow and uses much memory.
+
+```sql
+SELECT '' LIKE repeat('s', 200000000);              -- 3.6 s, 1174 MB
+SELECT repeat('s', 200000000) = repeat('t', 1);     -- 0.14 s, 219 MB
+```
+
+The copy is in `exec_textlike` (`postgres/frontend/functions.rs`). A
+constant pattern takes another path and is fast. With a pattern of
+632,696,932 characters, one LIKE takes 11.4 seconds and almost 4 GB.
+
+Expected PostgreSQL behavior: LIKE reads the strings in place, with no
+copy.
+
+Found by: the INDEX instance of the 12-hour campaign of 2026-11-05, as an
+AFL++ hang. The test case has two runs, so the LIKE ran twice, for 23
+seconds in total. The AFL++ time limit is 20 seconds.
+
+Issue: https://github.com/tursodatabase/turso/issues/11411
+
 ## Campaign log
 
 tursopg at submodule commit ff97c22, 4 cores, one `afl-fuzz` instance per
