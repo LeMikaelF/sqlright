@@ -408,6 +408,40 @@ Found by: the NoREC instance of the 12-hour campaign, round 12h-b, as
 an AFL++ crash (`CREATE TABLE v0 (CONSTRAINT x FOREIGN KEY (x, x) REFERENCES v0 ...)`
 and `ALTER TABLE v0 DROP c`).
 
+## 16. Crash and wrong data: a VALUES row with a different length
+
+In a multi-row `INSERT ... VALUES`, tursopg compares only the first row
+with the column count. A later row that is longer or shorter is not
+rejected:
+
+- A longer row loses its extra values without an error.
+- A shorter row takes the missing values from the row before it.
+- A row with many extra values writes past the register file and panics.
+
+```sql
+CREATE TABLE t (a int, b int);
+INSERT INTO t VALUES (1, 2), (3);                  -- tursopg: accepted
+SELECT a, b FROM t;                                -- tursopg: 1 2, 3 2
+INSERT INTO t VALUES (1, 2), (3, 4, 5);            -- tursopg: accepted, 5 is dropped
+INSERT INTO t VALUES (1, 2), (3, 4, 5, 6, 7, 8);   -- tursopg: panics
+```
+
+```text
+thread 'main' panicked at core/vdbe/execute.rs:5910:5:
+index out of bounds: the len is 9 but the index is 9
+```
+
+The panic is in `op_integer` (`state.registers[*dest]`). The number of
+extra values that is necessary for the panic changes with the program.
+`INSERT INTO t VALUES (3)` and `INSERT INTO t VALUES (1, 2, 3)` give the
+correct error (`table t has 2 columns but 3 values were supplied`).
+
+Expected PostgreSQL behavior: all three inserts fail with
+`VALUES lists must all be the same length`.
+
+Found by: the TLP instance of the 12-hour campaign, round 12h-b, as an
+AFL++ crash (an eight-row VALUES list with one row of 12 values).
+
 ## Campaign log
 
 tursopg at submodule commit ff97c22, 4 cores, one `afl-fuzz` instance per
