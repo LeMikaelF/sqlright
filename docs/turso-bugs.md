@@ -457,6 +457,8 @@ https://github.com/tursodatabase/turso/issues/11369#issuecomment-6648530085.
 accepts `5::serial`. PostgreSQL gives `type "serial" does not exist`.
 Comment on #11408:
 https://github.com/tursodatabase/turso/issues/11408#issuecomment-6648571421.
+`bug_INDEX_aafe8fc0ea9d36e4` is the `text` to `text[]` index of the
+related gap (`c2::text[]` on a `text` column, PostgreSQL: not IMMUTABLE).
 
 ## 17. Crash: a multi-row VALUES list with rows of different lengths
 
@@ -483,8 +485,10 @@ uses `values[0].len()` without a check.
 
 Expected PostgreSQL behavior: `VALUES lists must all be the same length`.
 
-Found by: the NoREC instance, campaign of 2026-11-05, as an AFL++ crash
-(signal 6).
+Found by: the NoREC instance, campaign of 2026-11-05, as two AFL++
+crashes (signal 6, `id:000000` and `id:000001`). The second crash panics
+in `op_string8` on `INSERT INTO v0 VALUES (1, 'p'), (2, 'q'), ('sun',
+'mon', 'tue', 'wed', 'thu', NULL, 'fri')` into a table with 2 columns.
 
 Issue: https://github.com/tursodatabase/turso/issues/11403 (already open).
 
