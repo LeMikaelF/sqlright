@@ -582,6 +582,169 @@ https://github.com/tursodatabase/turso/issues/11011#issuecomment-6655290026
 
 Issue: https://github.com/tursodatabase/turso/issues/11011
 
+## 21. Hang: the query timeout does not stop a slow conversion of a long text to a number
+
+The conversion of a long text to a number takes 20 to 35 ns for each
+character. The query timeout of the harness (2 s) does not stop it.
+
+```sql
+CREATE TABLE v0 (c1 timestamptz CHECK (repeat('0', 553623198)));
+INSERT INTO v0 VALUES ('2000-01-01 00:00:00+00:00');   -- 19.9 s, then "violates check constraint"
+SELECT CAST(repeat('0', 200000000) AS int);           -- 4.4 s
+SELECT CASE WHEN repeat('0', 200000000) THEN 1 ELSE 2 END;   -- 6.9 s
+```
+
+SQLite 3.53.1 does the CAST of 100,000,000 characters in 0.6 s. tursopg
+takes 2.3 s. PostgreSQL rejects a text in a CHECK or in a CASE WHEN.
+
+Found by: the NoREC instance of the 2026-11-05 campaign, as an AFL++ hang
+(`CHECK (repeat('AAA'::dia, 553623198))`: tursopg casts to the unknown
+type `dia` and gets 0, see #10263).
+
+Issue: https://github.com/tursodatabase/turso/issues/11413
+
+## 22. Crash: percentile_disc with a rowid in the fraction
+
+```sql
+CREATE TABLE t (a INT);
+INSERT INTO t VALUES (1);
+SELECT percentile_disc(oid) WITHIN GROUP (ORDER BY a) FROM t;
+```
+
+```text
+thread 'main' panicked at core/vdbe/builder.rs:2093:32:
+Cursor not found: CursorKey { table_reference_id: TableInternalId(1), index: None, is_build: false }
+```
+
+`emit_percentile_fraction_check` (`core/translate/main_loop/init.rs`)
+rejects a column reference in the fraction, but not a rowid reference
+(`oid`, `rowid`). `percentile_cont` panics the same way. PostgreSQL gives
+an error (`column "oid" does not exist`).
+
+Found by: the NoREC instance of the 2026-11-05 campaign, as 4 AFL++
+crashes (`INSERT INTO v0 SELECT percentile_disc(ARRAY[[..., oid ..., ...]]) WITHIN GROUP (ORDER BY c1) FROM v0`).
+
+Issue: https://github.com/tursodatabase/turso/issues/11424
+
+## 23. Crash: an aggregate argument with an IN subquery over an outer aggregate
+
+```sql
+CREATE TABLE t (a int, b int);
+INSERT INTO t VALUES (1, 2);
+SELECT max(a IN (SELECT sum(b))) FROM t;
+```
+
+```text
+thread 'main' panicked at core/vdbe/execute.rs:6910:42:
+cursor id 0 is None
+```
+
+`sum(b)` reads only the outer column, so it belongs to the outer query,
+inside `max()`. The seek of the IN subquery (`seek_internal`, the
+`IndexKeyUnpacked` branch) reads a cursor that is not open.
+`max((SELECT sum(b)))` returns NULL. SQLite gives `misuse of aggregate:
+sum()`. PostgreSQL gives `aggregate function calls cannot be nested`.
+
+Found by: the NoREC instance of the 2026-11-05 campaign, as an AFL++ crash
+(`INSERT ... RETURNING (SELECT count(*) FILTER (WHERE c3 IN (SELECT sum(c2) ...)) FROM v0, LATERAL (...))`).
+
+Issue: https://github.com/tursodatabase/turso/issues/11456
+
+## 24. Hang: an INSERT with a UNIQUE key on long text values
+
+```sql
+CREATE TABLE v0 (c1 text, c2 text, UNIQUE (c2, c1, c2, c1, c1, c2, c1, c2, c2));
+INSERT INTO v0 SELECT a, repeat('x', 200000) FROM generate_series(1, 130) a;   -- 40.7 s
+```
+
+The time grows faster than linear in the number of rows and in the size of
+the values: `UNIQUE (c2, c1, c2)` takes 0.51 s for 32 rows, 1.97 s for 65
+and 5.81 s for 130 rows of 200 KB. SQLite 3.53.1 needs 0.07 s. The 2 s
+query timeout of the harness does not stop the INSERT when the table has a
+UNIQUE or PRIMARY KEY constraint (it stops the INSERT with a non-unique
+index). PostgreSQL rejects a column that appears twice in a key and a key
+entry of more than about 2.7 KB.
+
+Found by: the NoREC instance of the 2026-11-05 campaign, as 5 AFL++ hangs
+(`CONSTRAINT x PRIMARY KEY (c2, c1, c2, ...)` and
+`INSERT INTO v0 SELECT a3, repeat('<814 characters>', 250) FROM generate_series(1, 130) a3`).
+
+Issue: https://github.com/tursodatabase/turso/issues/11459
+
+## The 12-hour campaign of 2026-11-05: findings and issues
+
+Three `afl-fuzz` instances (NoREC, TLP, INDEX) for 12 hours, turso commit
+ff97c22. AFL++ ran 5.2 million test cases, and the oracles compared 4.4
+million of them. NoREC, TLP and INDEX each restarted once or twice (see
+the changes below), so the numbers add up over all output directories.
+
+| Finding | Issue |
+|---|---|
+| A text constant is compared as text in a scan and converted in an index search (most NoREC and TLP reports, "class A") | #11011 (comment), finding 20 |
+| An integer or number-like constant on a date, time or jsonb key finds a row only through the index ("class B"; a TLP burst of 72 reports on a jsonb primary key) | #11386, finding 4 |
+| Extension aggregate in WHERE, VALUES, UPDATE SET, RETURNING or DELETE WHERE panics | #11395, finding 7 |
+| make_date panics on extreme arguments | #11398, finding 12 |
+| ALTER TABLE DROP on a table with no columns panics | #11402, finding 15 |
+| A VALUES row with a different length panics | #11403, finding 16 |
+| 8 array dimensions panic in CREATE TABLE, CAST and ALTER TABLE ADD COLUMN | #11416 (comment), finding 18 |
+| percentile_disc with a rowid in the fraction panics | #11424, finding 22 (new) |
+| An aggregate argument with an IN subquery over an outer aggregate panics | #11456, finding 23 (new) |
+| A nested CTE with the same name overflows the stack | #11401, finding 14 |
+| LIKE on a long string needs 4 bytes per character and aborts at 4 GB | #11411 |
+| A large NUMERIC scale makes an insert run for minutes | #11397, finding 10 |
+| A long text converted to a number is slow and the query timeout does not stop it | #11413, finding 21 (new) |
+| lpad and rpad are 10 times slower than repeat | #11417 |
+| An INSERT with a UNIQUE key on long text values is slow and not stopped by the timeout | #11459, finding 24 (new) |
+| An index that PostgreSQL rejects makes every insert fail | #9663 (oid), #11396, #11408 (comment) |
+| ON CONFLICT DO UPDATE SET is checked only with an index | #9664, finding 8 |
+
+New issues opened during the campaign: #11413, #11424, #11456, #11459.
+Comments with new forms on existing issues: #11011, #11395, #11398,
+#11408, #11416, #11459.
+
+### Crash and hang files
+
+All output directories (`work/camp-*` and `work/old-camp-*`). Each crash
+file was replayed under `ulimit -v 4000000` (NoREC with the 2 s harness,
+TLP and INDEX with `work/target-next` at 250 ms) and grouped by panic
+location. Hang files are grouped by the slow statement shape in their text.
+
+| Cause | Issue | Crash files | Hang files |
+|---|---|---|---|
+| 8 array dimensions (`core/schema.rs:10746`) | #11416 | 144 | |
+| Extension aggregate in a scalar context (`core/ext/function.rs:91`) | #11395 | 107 | |
+| LIKE on a long string: memory abort at 4 GB | #11411 | 27 | 17 |
+| Nested CTE with the same name: stack overflow | #11401 | 18 | |
+| Rowid in the percentile fraction (`core/vdbe/builder.rs:2093`) | #11424 | 16 | |
+| ALTER TABLE DROP on a table with no columns (`core/translate/alter.rs:893`) | #11402 | 4 | |
+| make_date on extreme arguments (`core/time/internal.rs:219`, chrono `datetime/mod.rs:1635`) | #11398 | 5 | |
+| VALUES row with a different length (`core/vdbe/execute.rs:6257`) | #11403 | 2 | |
+| IN subquery over an outer aggregate (`core/vdbe/execute.rs:6910`) | #11456 | 1 | |
+| Large NUMERIC scale | #11397 | | 65 |
+| Long text converted to a number (CHECK or CASE WHEN on repeat or lpad) | #11413 | | 6 |
+| lpad or rpad with a large length | #11417 | | 6 |
+| UNIQUE or PRIMARY KEY with a repeated column on long text | #11459 | | 5 |
+| Total | | 324 | 99 |
+
+### Reports
+
+| Oracle | Reports | Classes |
+|---|---|---|
+| NoREC | 468 | 320 class A (#11011), 148 class B (#11386). All pass without indexes. |
+| TLP | 183 | 182 class B (#11386, mostly jsonb, time and timestamp keys), 1 SQLRight false positive (marker text; fixed on main by 3f6b925) |
+| INDEX | 223 | 197 #11396, 15 #9663, 7 #11408, 1 #9664, 1 class B (#11386), 1 SQLRight false positive (marker text), 1 PostgreSQL-compatible behavior (`bool(jsonb)` index) |
+
+### SQLRight changes during the campaign
+
+- The harness reads the statement timeout from `SQLRIGHT_STMT_TIMEOUT_MS`.
+  TLP and INDEX ran with 250 ms after their restarts, and NoREC after its
+  restart. No report changed between 250 ms and 2000 ms.
+- Two oracle changes of this campaign are on `main` in another form: the
+  result marker statements of queue entries stay out of the mutation
+  library (3f6b925), and NoREC does not take `SELECT ... INTO` (1f49938).
+  The `INTO` pair only gave an oracle error, never a report, so that change
+  saves test cases and does not fix a false positive.
+
 ## Campaign log
 
 tursopg at submodule commit ff97c22, 4 cores, one `afl-fuzz` instance per
