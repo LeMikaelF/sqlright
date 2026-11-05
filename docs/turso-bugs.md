@@ -129,7 +129,13 @@ index. INDEX reports of 08:26 UTC: `bug_INDEX_0d42200cc3259d9d`,
 `bug_INDEX_e87f495583b987d2`.
 A `jsonb` primary key does the same: after `INSERT INTO t VALUES (1), (2), (6)`,
 `WHERE c = 6` counts 1 row and `WHERE NOT (c = 6)` counts 3 rows, so
-`sum(c)` over the TLP partitions is 15 instead of 9 (round 12h-b, TLP). With a
+`sum(c)` over the TLP partitions is 15 instead of 9 (round 12h-b, TLP). The
+TLP instance of the campaign of 2026-11-05 found it again: after
+`INSERT INTO v0 VALUES (4400)` into a `jsonb PRIMARY KEY` column, the
+partitions return the row twice (`bug_TLP_0602e96674489819`,
+`bug_TLP_06469310a0e61eab`, `bug_TLP_5bc844d37a3e31e9`,
+`bug_TLP_86307e4368968465`, `bug_TLP_afe0d9b35941f0e3`,
+`bug_TLP_b1a1d6494b83d06d`). With a
 valid date (`INSERT INTO v0 VALUES ('2024-01-02')`) both forms agree.
 PostgreSQL rejects the insert (`column "c1" is of type date but expression
 is of type integer`), so the first problem is the accepted insert; given
@@ -332,7 +338,8 @@ Found by: the INDEX instance of the 12-hour campaign, as an AFL++ hang
 (`default/hangs/`). Found again in the campaign of 2026-11-05 as the
 hang `id:000000` of the INDEX instance (`NUMERIC(1849400536, 1849400536)`,
 then `INSERT INTO t VALUES ('-10e-400')`, no stop in 20 seconds). Hang
-`id:000002` of the INDEX instance is the same problem.
+`id:000002` of the INDEX instance is the same problem. So is hang
+`id:000000` of the NoREC instance (`NUMERIC(298295755, 298295755)`).
 
 Issue: https://github.com/tursodatabase/turso/issues/11397. Comment on
 the 2-second limit:
@@ -819,6 +826,23 @@ takes almost no time in PostgreSQL.
 
 The statement does not stop at the 2-second limit of the harness. This is
 a performance difference, not a wrong result. Issue: none.
+
+Other hangs of the same kind (a very long string; the harness limit of
+2 seconds cannot stop the statement):
+
+| Hang | Statement | tursopg | PostgreSQL 16.15 |
+|---|---|---|---|
+| TLP `id:000000` | `SELECT quote_literal(lpad('sample', '563964475')) FROM v0` | no end in 40 s | `ERROR:  requested length too large` at once |
+| — | `quote_literal(lpad('sample', 56396447))` | 3.6 s | 0.79 s (with `length()`) |
+| NoREC `id:000002` | `INSERT ... VALUES (1, repeat('1234567890', 29329162)), ...` (293 MB) | over 2 s | `length(repeat(...))` 1.1 s |
+| NoREC `id:000001` | a SELECT with `repeat('1234567890', 82999375)` (830 MB) | over 2 s | `length(repeat(...))` 8.4 s |
+
+The tursopg times are the coordinator's measurements, and the
+PostgreSQL times are mine. PostgreSQL is slow for the `repeat`
+statements too. The `lpad` case differs: PostgreSQL rejects a result
+longer than 1 GB at once, because it reserves 4 bytes for each
+character. tursopg starts to build the string. NoREC hang `id:000000` is
+finding 10.
 
 ## 24. An IN list with two spellings of one value returns the row twice through an index
 
