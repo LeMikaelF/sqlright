@@ -115,6 +115,18 @@ A `timestamp` column with a plain index does the same: after
 `WHERE c = 2` finds the row through the index (campaign of 2026-11-05,
 NoREC, `bug_NOREC_3f1369eafa254aac` and `bug_NOREC_4187b2e5c1a1ccee`).
 A `timestamp UNIQUE` column does the same (`bug_NOREC_148a396fab798a8d`).
+A `timetz` column with an index does the same with a text literal: after
+`INSERT INTO t VALUES ('-10e-400')` (stored as `12:00:00`),
+`WHERE c = '-10e-400'` counts 0 rows in a scan and 1 row through the
+index. INDEX reports of 08:26 UTC: `bug_INDEX_0d42200cc3259d9d`,
+`bug_INDEX_334499c60caf18ae`, `bug_INDEX_40c58e23b26c5f5a`,
+`bug_INDEX_4655a20ea20dae1d`, `bug_INDEX_5c719c62f46c1324`,
+`bug_INDEX_711f6c866179fa35` (`DELETE ... WHERE c1 = 50`),
+`bug_INDEX_71ce57b1e6b8ac75`, `bug_INDEX_81d067b83994601a`,
+`bug_INDEX_8376e2dbe70b906b`, `bug_INDEX_b7fd6c80df4af30b`,
+`bug_INDEX_c0c3c8c18a2e0445`, `bug_INDEX_c289973e3e905df7`,
+`bug_INDEX_dfe7cafaa2d6b3ea`, `bug_INDEX_e4364d3ba6037b77` and
+`bug_INDEX_e87f495583b987d2`.
 A `jsonb` primary key does the same: after `INSERT INTO t VALUES (1), (2), (6)`,
 `WHERE c = 6` counts 1 row and `WHERE NOT (c = 6)` counts 3 rows, so
 `sum(c)` over the TLP partitions is 15 instead of 9 (round 12h-b, TLP). With a
@@ -575,7 +587,15 @@ and `bug_INDEX_f5a863c31d917ecc`. Batch of 07:23 UTC:
 `bug_INDEX_d7f2464fad3d75bf` and `bug_INDEX_ffc19a13c686a9fb`. From
 07:24 to 07:26 UTC, one queue entry gave 90 more reports. In each, only
 run 0 prints `invalid timestamp value` (an index on `c::timestamptz`
-over a `text` column).
+over a `text` column). Reports of 08:26 UTC: `bug_INDEX_1a217873e45c6a45`,
+`bug_INDEX_211e839985f3f2a4`, `bug_INDEX_224f556ad2098f7b`,
+`bug_INDEX_2f1b0fb578608f1a`, `bug_INDEX_339ec0c5eb82f9f2`,
+`bug_INDEX_56bf0cd60e19a576`, `bug_INDEX_5e38d5a4c0c7911e`,
+`bug_INDEX_855925882214131e`, `bug_INDEX_890d3800c2ead4e1`,
+`bug_INDEX_96eea9408a85248f`, `bug_INDEX_9f066be804e3ff0b`,
+`bug_INDEX_ad49400f3969e8ea`, `bug_INDEX_b0edbda1114b3d20`,
+`bug_INDEX_b90eecb2eae801ce` (`c2::timestamp`), `bug_INDEX_cfef8533ee4c5aa5`
+and `bug_INDEX_e939a8e6cc18eea1`.
 
 ## 17. Crash: a multi-row VALUES list with rows of different lengths
 
@@ -652,6 +672,9 @@ with `invalid input syntax for type numeric: "1 year"`. Batch of
 07:23 UTC: `bug_INDEX_4141aa86b51de78b` (a partial index
 `WHERE v0.c2 / '::2:ffff:ffff:ffff:ffff/128'`) and
 `bug_INDEX_964bc9968458d23f` (an index on `c1 % '192.168.1.255/6'::text`).
+Reports of 08:26 UTC: `bug_INDEX_191daab77c2e66c3` (a partial index
+`WHERE v0.c2 / '{2,180,...}'`), `bug_INDEX_91a23ac6a5e82aa9` and
+`bug_INDEX_b622ad2cf7311d1c` (`1 / c1`).
 
 Issue: a variant of https://github.com/tursodatabase/turso/issues/11387.
 Comment:
@@ -701,7 +724,8 @@ Found by: the INDEX oracle, campaign of 2026-11-05
 (`oid = 70`), and `WHERE oid LIKE '"%"'` in `bug_INDEX_97d76fc4b07760f5`,
 `bug_INDEX_9bf29920b7cb4c9f`, `bug_INDEX_9dae627b38f5a1f3` and
 `bug_INDEX_c3b093f37a41c17f`. Later: `bug_INDEX_942f1a02d8543551`
-(`WHERE oid = 'cr_owner'`).
+(`WHERE oid = 'cr_owner'`), `bug_INDEX_0bee8ad86590ab36` and
+`bug_INDEX_29c3ca95a502cf8e`.
 
 Issue: a variant of https://github.com/tursodatabase/turso/issues/9663
 (the same problem with `rowid`). Comment:
@@ -795,6 +819,30 @@ takes almost no time in PostgreSQL.
 
 The statement does not stop at the 2-second limit of the harness. This is
 a performance difference, not a wrong result. Issue: none.
+
+## 24. An IN list with two spellings of one value returns the row twice through an index
+
+```sql
+CREATE TABLE a (c time);
+INSERT INTO a VALUES ('12:00:00');
+CREATE INDEX ai ON a (c);
+SELECT count(*) FROM a WHERE c IN ('12:00:00', '12:00');   -- tursopg: 2 (1 without the index)
+```
+
+The same happens with `timetz`, `timestamp` and `uuid` (lowercase and
+uppercase forms of one UUID). `integer` and `numeric` columns give 1.
+`open_in_seek_source_cursor` (`core/translate/main_loop/in_seek.rs`)
+puts the literals into a unique ephemeral index before they are
+encoded. Then each literal is encoded and gives one seek. Two literals
+with the same encoded value find the row twice.
+
+Expected PostgreSQL behavior: `1` (PostgreSQL 16.15).
+
+Found by: the INDEX oracle, campaign of 2026-11-05
+(`bug_INDEX_cdc44c1a94399e68`: a `timetz` column and
+`WHERE c1 IN ('-10e-400', '0.0', 9.096544)`).
+
+Issue: https://github.com/tursodatabase/turso/issues/11453.
 
 ## Campaign log
 
