@@ -606,7 +606,7 @@ Found by: the TLP instance of the 12-hour campaign of 2026-11-05
 
 Issue: https://github.com/tursodatabase/turso/issues/11436
 
-## 17. Crash: a FROM subquery reads a CTE column without a FROM clause
+## 22. Crash: a FROM subquery reads a CTE column without a FROM clause
 
 A FROM subquery without a FROM clause names a column of a CTE. When
 another subquery reads the CTE, turso panics in the code generation.
@@ -661,8 +661,9 @@ result markers itself and the seeds without transaction statements.
 tursopg at ff97c22. One `afl-fuzz` instance per oracle, from 02:31 to
 14:31 UTC. Seeds: 1,837 files (both corpora, filtered by the harness).
 The instances used the oracles of commit 6b1824e. The SQLRight fixes
-made during the campaign (afbea86, 9eb4d15, 5c33dbc, e3cbead, 42a8d2e)
-were not active in the running instances.
+made during the campaign (afbea86, 1933e2e, 962d1e1, dbf2ed9, and the
+result marker fixes 3f6b925 and ada818b of another branch) were not
+active in the running instances.
 
 | Oracle | Executions | Test cases | Reports | Crashes | Hangs | Queue | Edges |
 |---|---|---|---|---|---|---|---|
@@ -671,7 +672,7 @@ were not active in the running instances.
 | INDEX | 751k | 632,818 | 382 | 117 | 2 | 18,717 | 161,715 |
 
 New turso issues: #11407 (finding 8, ON CONFLICT with a non-unique
-index), #11436 (finding 16), #11462 (finding 17). Comments with new
+index), #11436 (finding 21), #11462 (finding 22). Comments with new
 forms: #11403 (a plain VALUES list panics), #11386 (timetz, every
 integer finds the row), #11395 (an extension aggregate inside an
 aggregate).
@@ -679,18 +680,18 @@ aggregate).
 Reports by cause:
 
 - NoREC: about 550 window clauses kept in the original form (SQLRight,
-  e3cbead), about 75 timestamptz text comparisons (#11011), jsonb and
+  962d1e1), about 75 timestamptz text comparisons (#11011), jsonb and
   date keys (#11386), 1 FROM taken from a subquery (SQLRight, afbea86),
-  a few result markers in values (SQLRight, 5c33dbc).
+  a few result markers in values (SQLRight, 3f6b925).
 - TLP: date, time, timetz and timestamptz keys (#11386, #11011), the
   expression index with TRUE (#11436), result markers in values
-  (SQLRight, 5c33dbc), 2 aliases with a double quote (SQLRight, open),
+  (SQLRight, 3f6b925), 2 aliases with a double quote (SQLRight, open),
   1 aggregate in a subquery over an outer column (SQLRight, open).
 - INDEX: expression and partial indexes that fail on some rows
-  (SQLRight, 9eb4d15), an INSERT stopped by the time limit in one run
-  only (SQLRight, 42a8d2e), ON CONFLICT DO UPDATE (#11407), bare
+  (SQLRight, 1933e2e), an INSERT stopped by the time limit in one run
+  only (SQLRight, dbf2ed9), ON CONFLICT DO UPDATE (#11407), bare
   columns with HAVING (#7977), date, timestamp and jsonb keys (#11386),
-  1 bare column next to an aggregate (SQLRight, 9eb4d15).
+  1 bare column next to an aggregate (SQLRight, 1933e2e).
 
 Crashes by location, all known: stack overflow on nested CTEs with one
 name (131, #11401), extension aggregate in scalar context (116,
