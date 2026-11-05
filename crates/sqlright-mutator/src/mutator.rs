@@ -305,6 +305,9 @@ impl Mutator {
                 continue;
             }
             current.push(';');
+            if is_result_marker(&current) {
+                continue;
+            }
             let Some(mut q) = parse_query(&current) else {
                 continue;
             };
@@ -1085,3 +1088,76 @@ const SYS_CATALOG_NAMES: &[&str] = &[
     "pg_user_mappings",
     "pg_views",
 ];
+
+/// True for a result marker statement (`SELECT 'BEGIN VERI n';` or
+/// `SELECT 'END VERI n';`). A saved test case holds these statements. They
+/// must not go into the library: a mutation can then put the marker text
+/// into an oracle SELECT, and a result row with that text moves the
+/// borders of the result blocks.
+pub fn is_result_marker(stmt: &str) -> bool {
+    let s = stmt.trim().trim_end_matches(';').trim();
+    let Some(head) = s.get(..6) else {
+        return false;
+    };
+    if !head.eq_ignore_ascii_case("select") {
+        return false;
+    }
+    let Some(inner) = s[6..]
+        .trim()
+        .strip_prefix('\'')
+        .and_then(|q| q.strip_suffix('\''))
+    else {
+        return false;
+    };
+    inner
+        .strip_prefix("BEGIN VERI ")
+        .or_else(|| inner.strip_prefix("END VERI "))
+        .is_some_and(|n| !n.is_empty() && n.bytes().all(|b| b.is_ascii_digit()))
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+    use crate::oracle::AllCompRes;
+
+    struct NoSelect;
+    impl Oracle for NoSelect {
+        fn oracle_type(&self) -> &'static str {
+            "TEST"
+        }
+        fn template_select_stmt(&self, _m: &mut Mutator) -> String {
+            String::new()
+        }
+        fn is_oracle_select_stmt(&self, _t: &mut IrTree, _stmt: IrId) -> bool {
+            false
+        }
+        fn post_fix_transform_select_stmt(
+            &self,
+            _m: &mut Mutator,
+            t: &mut IrTree,
+            stmt: IrId,
+            _run: usize,
+        ) -> Vec<IrTree> {
+            vec![t.extract(stmt)]
+        }
+        fn compare_results(&self, _res: &mut AllCompRes) {}
+    }
+
+    #[test]
+    fn finds_result_markers() {
+        assert!(is_result_marker("SELECT 'BEGIN VERI 0';"));
+        assert!(is_result_marker("select 'END VERI 12'"));
+        assert!(!is_result_marker("SELECT 'END VERI 0' AS a FROM t;"));
+        assert!(!is_result_marker("SELECT 'END VERI x';"));
+        assert!(!is_result_marker("SELECT 1;"));
+    }
+
+    #[test]
+    fn library_skips_result_markers() {
+        let mut m = Mutator::new(1);
+        m.add_all_to_library(&NoSelect, "SELECT 'BEGIN VERI 0'; SELECT 'END VERI 0';");
+        assert!(m.real_ir_set.values().all(|v| v.is_empty()));
+        m.add_all_to_library(&NoSelect, "CREATE TABLE t (c INT);");
+        assert!(m.real_ir_set.values().any(|v| !v.is_empty()));
+    }
+}

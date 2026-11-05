@@ -71,6 +71,10 @@ pub fn compare_query_result(oracle: &dyn Oracle, all: &mut AllCompRes) {
         all.final_res = Some(OraCompRes::Error);
         return;
     }
+    if !markers_are_paired(&all.res_str) {
+        all.final_res = Some(OraCompRes::Error);
+        return;
+    }
     let res_vecs: Vec<Vec<String>> = (0..4)
         .map(|i| {
             extract_query_result(
@@ -106,7 +110,7 @@ pub fn compare_query_results_cross_run(oracle: &dyn Oracle, all: &mut AllCompRes
     all.final_res = Some(OraCompRes::Pass);
     let mut per_run: Vec<Vec<String>> = Vec::new();
     for res_str in &all.v_res_str {
-        if is_str_empty(res_str) {
+        if is_str_empty(res_str) || !markers_are_paired(res_str) {
             all.final_res = Some(OraCompRes::Error);
             return;
         }
@@ -127,6 +131,35 @@ pub fn compare_query_results_cross_run(oracle: &dyn Oracle, all: &mut AllCompRes
         all.v_res.push(comp);
     }
     oracle.compare_results(all);
+}
+
+/// True when the result markers of an output are in pairs: each
+/// `BEGIN VERI n` line has its `END VERI n` line after it, and no other
+/// line holds the marker text. A result row with the marker text (a string
+/// literal like `'END VERI 0'` in an oracle SELECT) moves the borders of
+/// the blocks. Then the blocks of two forms do not belong together.
+pub fn markers_are_paired(res: &str) -> bool {
+    let mut open: Option<&str> = None;
+    for line in res.lines() {
+        if !line.contains("BEGIN VERI") && !line.contains("END VERI") {
+            continue;
+        }
+        let line = line.trim();
+        if let Some(n) = line.strip_prefix("BEGIN VERI ") {
+            if open.is_some() || n.is_empty() || !n.bytes().all(|b| b.is_ascii_digit()) {
+                return false;
+            }
+            open = Some(n);
+        } else if let Some(n) = line.strip_prefix("END VERI ") {
+            if open != Some(n) {
+                return false;
+            }
+            open = None;
+        } else {
+            return false;
+        }
+    }
+    open.is_none()
 }
 
 /// True when a result block is an error.
@@ -215,6 +248,68 @@ mod tests {
             extract_query_result(out, "BEGIN VERI 1", "END VERI 1"),
             vec!["\n3 \n"]
         );
+    }
+
+    #[test]
+    fn accepts_paired_markers() {
+        let out = "-- SQLRIGHT INPUT 0123\nBEGIN VERI 0 \n3 \nEND VERI 0 \nBEGIN VERI 1 \n3 \nEND VERI 1 \n";
+        assert!(markers_are_paired(out));
+        assert!(markers_are_paired(""));
+    }
+
+    #[test]
+    fn rejects_a_row_with_the_marker_text() {
+        // `SELECT 'END VERI 0' AS a FROM t` on a table with two rows.
+        let out = "BEGIN VERI 0 \nEND VERI 0 \nEND VERI 0 \nEND VERI 0 \nBEGIN VERI 1 \n2 \nEND VERI 1 \n";
+        assert!(!markers_are_paired(out));
+        let out = "BEGIN VERI 0 \nBEGIN VERI 1 x \nEND VERI 0 \n";
+        assert!(!markers_are_paired(out));
+        let out = "BEGIN VERI 0 \n1 \n";
+        assert!(!markers_are_paired(out));
+    }
+
+    #[test]
+    fn a_row_with_the_marker_text_gives_an_error() {
+        struct AlwaysFail;
+        impl Oracle for AlwaysFail {
+            fn oracle_type(&self) -> &'static str {
+                "TEST"
+            }
+            fn template_select_stmt(&self, _m: &mut sqlright_mutator::Mutator) -> String {
+                String::new()
+            }
+            fn is_oracle_select_stmt(
+                &self,
+                _t: &mut sqlright_ir::IrTree,
+                _stmt: sqlright_ir::IrId,
+            ) -> bool {
+                false
+            }
+            fn post_fix_transform_select_stmt(
+                &self,
+                _m: &mut sqlright_mutator::Mutator,
+                _t: &mut sqlright_ir::IrTree,
+                _stmt: sqlright_ir::IrId,
+                _run: usize,
+            ) -> Vec<sqlright_ir::IrTree> {
+                Vec::new()
+            }
+            fn compare_results(&self, res: &mut AllCompRes) {
+                res.final_res = Some(OraCompRes::Fail);
+            }
+        }
+        let mut all = AllCompRes {
+            res_str: "BEGIN VERI 0 \nEND VERI 0 \nEND VERI 0 \nBEGIN VERI 1 \n1 \nEND VERI 1 \n".into(),
+            ..Default::default()
+        };
+        compare_query_result(&AlwaysFail, &mut all);
+        assert_eq!(all.final_res, Some(OraCompRes::Error));
+        let mut all = AllCompRes {
+            v_res_str: vec!["BEGIN VERI 0 \n1 \nEND VERI 0 \n".into(), "BEGIN VERI 0 \nEND VERI 0 \nEND VERI 0 \n".into()],
+            ..Default::default()
+        };
+        compare_query_results_cross_run(&AlwaysFail, &mut all);
+        assert_eq!(all.final_res, Some(OraCompRes::Error));
     }
 
     #[test]
