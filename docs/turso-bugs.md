@@ -477,13 +477,13 @@ mutation library is the same set.
 | 4 | NoREC | 161k | 0 | 108,809 test cases, 96,545 comparable pairs, no failure (60 min, seeds without transaction statements, harness prints the markers) |
 | 6 | TLP | 65k | 0 | 25,130 test cases, 20,365 comparable pairs, no failure (50 min) |
 | 1 | INDEX | 52k | 0 | 23,199 multi-run test cases, 19,976 comparable blocks, no failure, no crash, no hang (120 min) |
+| 12h-b | NoREC | 351k | 17 | 142 min. 272,988 test cases, 245,877 pass, 22,778 error. All 17 reports: finding 4 with a `time` primary key. 10 crashes: 8 finding 7, 1 finding 14, 1 finding 15. 1 hang: finding 10 |
+| 12h-b | TLP | 292k | 36 | Four instances (the oracle was fixed three times), 151k test cases in total. 7 aggregate inside CASE, 1 `avg` integer division, 18 ungrouped target after name filling (all SQLRight bugs, fixed). 1 finding 11. 11 finding 4 (`date` and `jsonb` keys). 1 crash: finding 16 |
+| 12h-b | INDEX | 129k | 7 | 142 min. 78,796 test cases, 73,857 pass. All 7 reports: finding 4 with an indexed `timestamptz` column. 2 crashes: finding 12. 1 hang (not examined) |
 
 The INDEX oracle ran once for two hours with the first harness build. The
 NoREC and TLP rounds after the first used the harness that prints the
 result markers itself and the seeds without transaction statements.
-| 12h-b | NoREC | 351k | 17 | 142 min. 272,988 test cases, 245,877 pass, 22,778 error. All 17 reports: finding 4 with a `time` primary key. 10 crashes: 8 finding 7, 1 finding 14, 1 finding 15. 1 hang: finding 10 |
-| 12h-b | TLP | 292k | 36 | Four instances (the oracle was fixed three times), 151k test cases in total. 7 aggregate inside CASE, 1 `avg` integer division, 18 ungrouped target after name filling (all SQLRight bugs, fixed). 1 finding 11. 11 finding 4 (`date` and `jsonb` keys). 1 crash: finding 16 |
-| 12h-b | INDEX | 129k | 7 | 142 min. 78,796 test cases, 73,857 pass. All 7 reports: finding 4 with an indexed `timestamptz` column. 2 crashes: finding 12. 1 hang (not examined) |
 
 Round 12h-b stopped after 142 minutes, not 12 hours. The first start of
 round 12h-b did no work: the harness binary stopped with SIGILL after a
