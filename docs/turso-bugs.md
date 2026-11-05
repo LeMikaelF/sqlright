@@ -551,8 +551,12 @@ Issue: https://github.com/tursodatabase/turso/issues/11417
   `avg(c8) OVER (ROWS BETWEEN 1 FOLLOWING AND 1 FOLLOWING)`, gives values
   that depend on the row order. An index on `c8` changes the scan order,
   so the INDEX oracle saw a difference (`bug_INDEX_cce4e92ce76bb8a2`,
-  camp-index2). Both results are correct. This is the first report of
-  this kind, so the oracle is not changed yet.
+  camp-index2). Both results are correct. 40 more reports of camp-index2
+  had the same cause (`min(c) OVER (ROWS BETWEEN 2 FOLLOWING AND 3
+  FOLLOWING)`). The INDEX oracle compared only the row count of a window
+  query, but a row that is all NULL prints as an empty line, which the
+  count leaves out. The INDEX oracle now does not take a SELECT with a
+  window function.
 
 ## Campaign log
 

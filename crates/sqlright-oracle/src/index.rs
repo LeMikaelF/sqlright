@@ -53,12 +53,6 @@ impl Index {
     }
 
     fn stmt_index_type(t: &IrTree, stmt: IrId) -> IndexType {
-        // `sum(x) OVER (...)` returns one row per input row, and without an
-        // ORDER BY in the window its values depend on the scan order. Only
-        // its row count is comparable.
-        if has_window_function(t, stmt) {
-            return IndexType::Normal;
-        }
         let targets = ir_wrapper::get_target_el_in_select_target(t, stmt);
         let Some(target) = targets.first().copied() else {
             return IndexType::Normal;
@@ -185,7 +179,14 @@ impl Oracle for Index {
         }
         // LIMIT without ORDER BY picks rows the planner likes, so indexes
         // change its result by design.
-        !ir_wrapper::is_exist_limit_clause(t, stmt)
+        if ir_wrapper::is_exist_limit_clause(t, stmt) {
+            return false;
+        }
+        // The values of `min(x) OVER (ROWS BETWEEN 1 FOLLOWING AND 1 FOLLOWING)`
+        // depend on the scan order, which an index changes. Even the row count
+        // is not comparable: a row that is all NULL prints as an empty line,
+        // and the row count leaves out empty lines.
+        !has_window_function(t, stmt)
     }
 
     fn pre_fix_transform_normal_stmt(
@@ -285,26 +286,19 @@ mod tests {
     }
 
     #[test]
-    fn compares_only_the_row_count_of_a_window_function() {
-        let cmd = "SELECT 'BEGIN VERI 0'; SELECT sum(c1) OVER (ROWS BETWEEN 2 PRECEDING AND 1 PRECEDING) FROM v0 WHERE c1; SELECT 'END VERI 0'; \
-                   SELECT 'BEGIN VERI 0'; SELECT sum(c1) FROM v0 WHERE c1; SELECT 'END VERI 0';";
-        assert_eq!(
-            Index::get_v_valid_type(cmd),
-            vec![IndexType::Normal, IndexType::Aggr]
-        );
-        let mut all = AllCompRes::default();
-        all.v_cmd_str.push(cmd.into());
-        all.v_res_str.push("x".into());
-        all.v_res.push(CompRes {
-            v_res_str: vec!["1.0 \n2.0 \n".into(), "2.0 \n5.0 \n".into()],
-            ..CompRes::default()
-        });
-        all.v_res.push(CompRes {
-            v_res_str: vec!["3 \n".into(), "3 \n".into()],
-            ..CompRes::default()
-        });
-        Index.compare_results(&mut all);
-        assert_eq!(all.final_res, Some(OraCompRes::Pass));
+    fn does_not_take_a_window_function() {
+        for sql in [
+            "SELECT min(c6) OVER (ROWS BETWEEN 2 FOLLOWING AND 3 FOLLOWING) FROM v4;",
+            "SELECT c1, sum(c1) OVER (ORDER BY c1) FROM v0 WHERE c1;",
+            "SELECT sum(c1) OVER w FROM v0 WINDOW w AS (ORDER BY c1);",
+        ] {
+            let mut q = parse_query(sql).unwrap();
+            let stmt = ir_wrapper::get_first_stmt_from_root(&q.tree, q.root).unwrap();
+            assert!(!Index.is_oracle_select_stmt(&mut q.tree, stmt), "{sql}");
+        }
+        let mut q = parse_query("SELECT sum(c1) FROM v0 WHERE c1;").unwrap();
+        let stmt = ir_wrapper::get_first_stmt_from_root(&q.tree, q.root).unwrap();
+        assert!(Index.is_oracle_select_stmt(&mut q.tree, stmt));
     }
 
     #[test]
