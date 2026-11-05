@@ -623,6 +623,8 @@ https://github.com/tursodatabase/turso/issues/9663 (open, its comment has the
   tests each partition on its own rows: the partition `c2 = 1` has only
   `c1 = 1`, so it drops its row, and the min of the partitions is 2, not 1.
   The TLP oracle now does not take an aggregate SELECT with HAVING.
+  `bug_TLP_25ec47f25b3518e4` and `bug_TLP_763374296a259483` (camp-tlp3, old
+  library) have the same cause, with `avg(...) ... HAVING`.
 
 ## Campaign log
 
