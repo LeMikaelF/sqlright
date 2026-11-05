@@ -32,9 +32,12 @@ use sqlright_pg_parser::parse_query;
 
 use crate::config::Config;
 
-/// Functions whose results change between runs. A test case that names one
-/// is not checked (the C++ only filtered `random`).
+/// Functions whose results change between runs, and the largest 64-bit
+/// integer. A test case that names one is not checked (the C++ only filtered
+/// `random`). After a row gets the largest rowid, the next rowid is random (as
+/// in SQLite), so a `serial` key gets a different value in each run.
 const NON_DETERMINISTIC: &[&str] = &[
+    "9223372036854775807",
     "random",
     "now(",
     "current_timestamp",
@@ -433,7 +436,13 @@ impl Engine {
             all.v_res_str = split_runs(output);
             compare_query_results_cross_run(self.oracle.as_ref(), &mut all);
         }
-        let result = all.final_res.unwrap_or(OraCompRes::Error);
+        let mut result = all.final_res.unwrap_or(OraCompRes::Error);
+        // A statement that hit the time limit of the harness stops at a point
+        // that depends on timing. Thus a difference after it proves nothing.
+        if matches!(result, OraCompRes::Fail) && has_statement_timeout(output) {
+            result = OraCompRes::Error;
+            all.final_res = Some(OraCompRes::Error);
+        }
         (result, all)
     }
 
@@ -542,6 +551,12 @@ pub fn is_non_deterministic(input: &str) -> bool {
         || input.lines().any(|l| l.trim_start().starts_with('!'))
 }
 
+/// True when the harness output has the error line of a statement that ran
+/// longer than the time limit of the harness (`STATEMENT_TIMEOUT`).
+pub fn has_statement_timeout(output: &str) -> bool {
+    output.lines().any(|l| l.trim_end() == "ERROR:  interrupt")
+}
+
 /// True when the text holds `BEGIN VERI` or `END VERI`. The result
 /// extraction finds the result blocks by these words. A string literal
 /// with these words in a statement other than a result marker can show in
@@ -554,6 +569,26 @@ fn contains_result_marker(text: &str) -> bool {
 #[cfg(test)]
 mod tests {
     use super::*;
+
+    #[test]
+    fn the_largest_rowid_makes_a_test_case_non_deterministic() {
+        assert!(is_non_deterministic(
+            "INSERT INTO v0 (c1) SELECT '9223372036854775807'::float8::int8;"
+        ));
+        assert!(is_non_deterministic("SELECT random();"));
+        assert!(!is_non_deterministic("INSERT INTO v0 VALUES (9223372036854775);"));
+    }
+
+    #[test]
+    fn finds_a_statement_timeout() {
+        assert!(has_statement_timeout(
+            "BEGIN VERI 0 \nERROR:  interrupt\nEND VERI 0 \n"
+        ));
+        assert!(!has_statement_timeout("1 \nERROR:  division by zero\n"));
+        assert!(!has_statement_timeout(
+            "ERROR:  syntax error near interrupt\n"
+        ));
+    }
 
     #[test]
     fn a_case_with_a_marker_literal_is_not_generated() {
