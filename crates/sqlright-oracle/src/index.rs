@@ -14,6 +14,7 @@ use sqlright_mutator::Mutator;
 use sqlright_pg_parser::parse_query;
 
 use crate::norec::parse_leading_int;
+use crate::shape;
 use crate::tlp::oracle_select_blocks;
 
 pub struct Index;
@@ -185,7 +186,14 @@ impl Oracle for Index {
         }
         // LIMIT without ORDER BY picks rows the planner likes, so indexes
         // change its result by design.
-        !ir_wrapper::is_exist_limit_clause(t, stmt)
+        if ir_wrapper::is_exist_limit_clause(t, stmt) {
+            return false;
+        }
+        // Only the row count of a window function is compared (see
+        // `stmt_index_type`). Other values that depend on the plan, such as
+        // a column that is neither grouped nor aggregated, change with an
+        // index on a correct database too.
+        has_window_function(t, stmt) || !shape::output_depends_on_the_plan(t, stmt)
     }
 
     fn pre_fix_transform_normal_stmt(
@@ -267,6 +275,32 @@ impl Oracle for Index {
 #[cfg(test)]
 mod tests {
     use super::*;
+
+    #[test]
+    fn rejects_an_aggregate_query_with_an_ungrouped_column() {
+        for (sql, accepted) in [
+            ("SELECT v6.c8, c7, count(*) FROM v6;", false),
+            ("SELECT c8 FROM v6 HAVING sum(c7) > 0;", false),
+            ("SELECT c8, sum(c7) + c9 FROM v6 GROUP BY c8;", false),
+            ("SELECT * FROM v6 GROUP BY c8;", false),
+            ("SELECT count(*), max(c7) + 1 FROM v6;", true),
+            ("SELECT c8, count(*) FROM v6 GROUP BY c8;", true),
+            ("SELECT c8, (SELECT count(*) FROM v0) FROM v6;", true),
+            ("SELECT c8, c7 FROM v6 WHERE c9 > 0;", true),
+            (
+                "SELECT sum(c1) OVER (ROWS BETWEEN 2 PRECEDING AND 1 PRECEDING) FROM v0;",
+                true,
+            ),
+        ] {
+            let mut q = parse_query(sql).unwrap();
+            let stmt = ir_wrapper::get_first_stmt_from_root(&q.tree, q.root).unwrap();
+            assert_eq!(
+                Index.is_oracle_select_stmt(&mut q.tree, stmt),
+                accepted,
+                "{sql}"
+            );
+        }
+    }
 
     #[test]
     fn removes_unique_and_drops_indexes_in_run_two() {
