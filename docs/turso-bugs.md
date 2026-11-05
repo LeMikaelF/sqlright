@@ -106,6 +106,10 @@ row (12-hour campaign, round 12h-b, NoREC). A `timestamptz` column
 with an index does the same: `INSERT INTO t VALUES (2)` stores
 `-4713-11-26 12:00:00`, `c = '2'` is false as an expression, and
 `WHERE c = '2'` finds the row only through the index (round 12h-b, INDEX).
+Text in scientific notation is read as a Julian day too: after
+`INSERT INTO t VALUES ('-10e-400')`, `WHERE c = '10e-400'` finds the row
+only through the index (campaign of 2026-11-05, INDEX,
+`bug_INDEX_5ffdc5174ae637df`).
 A `jsonb` primary key does the same: after `INSERT INTO t VALUES (1), (2), (6)`,
 `WHERE c = 6` counts 1 row and `WHERE NOT (c = 6)` counts 3 rows, so
 `sum(c)` over the TLP partitions is 15 instead of 9 (round 12h-b, TLP). With a
@@ -407,6 +411,42 @@ form, `CREATE TABLE` fails with
 Found by: the NoREC instance of the 12-hour campaign, round 12h-b, as
 an AFL++ crash (`CREATE TABLE v0 (CONSTRAINT x FOREIGN KEY (x, x) REFERENCES v0 ...)`
 and `ALTER TABLE v0 DROP c`).
+
+## 16. Casts that PostgreSQL does not have are accepted
+
+tursopg accepts a cast from a scalar to an array type when it prepares
+the statement. The cast fails when it runs. In an expression index, the
+cast runs for each new row, so every insert into the table fails.
+
+```sql
+CREATE TABLE t (a int);
+CREATE INDEX ti ON t ((a::text[]));   -- tursopg: accepted
+INSERT INTO t VALUES (1);             -- tursopg: ERROR:  cannot store non-array value in TEXT column .
+SELECT count(*) FROM t;               -- tursopg: 0 (1 without the index)
+SELECT 5::date, 5::uuid;              -- tursopg: -4713-11-29 | 5
+```
+
+`true::int[]` fails the same way. `5::timestamp` and `5::interval`
+return a value. `translate_cast_expr` (`core/translate/expr/translator.rs`)
+examines only the element type of an array target, not the source type.
+
+Expected PostgreSQL behavior: each cast fails when PostgreSQL parses
+it, for example `cannot cast type integer to text[]` and
+`cannot cast type integer to date` (PostgreSQL 16.15).
+
+A related gap: `CREATE INDEX ui ON u ((b::text[]))` on a `text` column
+is accepted. PostgreSQL rejects it with
+`functions in index expression must be marked IMMUTABLE`.
+
+Another related problem: a type with two or more declared dimensions
+(`text[][]`, `int[2][3]`) rejects every text literal, also `'{a,b}'`.
+PostgreSQL ignores the declared dimensions. This is a variant of
+https://github.com/tursodatabase/turso/issues/11369.
+
+Found by: the INDEX oracle, campaign of 2026-11-05 (reports
+`bug_INDEX_84d7e3aca4b9df8c` and `bug_INDEX_0ef60883160771c9`).
+
+Issue: not filed. Draft in `work/issues-draft/01-casts-postgres-does-not-have.md`.
 
 ## Campaign log
 
