@@ -230,7 +230,9 @@ SQLite does not compile the DO UPDATE branch. Issue #10393 (fixed by
 constraint check can jump to it. But `build_constraints_to_check` in
 `core/translate/insert.rs` adds every index, also the non-unique ones.
 The INDEX campaign of 2026-11-05 found the same difference again after
-3 minutes. No issue was opened yet.
+3 minutes.
+
+Issue: https://github.com/tursodatabase/turso/issues/11407
 
 Found by: the INDEX oracle, 12-hour campaign (the row counts of the run
 with indexes and the run without indexes were different).
