@@ -17,7 +17,7 @@
 use std::collections::{HashSet, VecDeque};
 use std::path::Path;
 
-use sqlright_ir::util::{find_string_in, hash_str, is_str_empty};
+use sqlright_ir::util::{hash_str, is_str_empty};
 use sqlright_ir::IrType;
 use sqlright_mutator::ir_wrapper;
 use sqlright_mutator::oracle::{
@@ -36,7 +36,7 @@ use crate::config::Config;
 /// is not checked (the C++ only filtered `random`).
 const NON_DETERMINISTIC: &[&str] = &[
     "random",
-    "now(",
+    "now",
     "current_timestamp",
     "current_date",
     "current_time",
@@ -511,8 +511,22 @@ pub fn fnv1a(data: &[u8]) -> u64 {
 /// runs, so that a difference proves nothing.
 pub fn is_non_deterministic(input: &str) -> bool {
     let lower = input.to_ascii_lowercase();
-    NON_DETERMINISTIC.iter().any(|f| find_string_in(&lower, f))
+    NON_DETERMINISTIC.iter().any(|f| contains_word(&lower, f))
         || input.lines().any(|l| l.trim_start().starts_with('!'))
+}
+
+/// True when `word` occurs in `text` as a whole name: the characters next to
+/// it are not letters, digits or `_`. Thus `random` does not match the
+/// aggregate name `sum_int_randomrestart`.
+fn contains_word(text: &str, word: &str) -> bool {
+    let is_name_byte = |b: u8| b.is_ascii_alphanumeric() || b == b'_';
+    let bytes = text.as_bytes();
+    text.match_indices(word).any(|(start, _)| {
+        let end = start + word.len();
+        let before_ok = start == 0 || !is_name_byte(bytes[start - 1]);
+        let after_ok = end == bytes.len() || !is_name_byte(bytes[end]);
+        before_ok && after_ok
+    })
 }
 
 /// The test case without its result marker statements
@@ -572,6 +586,20 @@ mod tests {
             !texts.iter().any(|q| q.contains("VERI")),
             "a marker is in the library: {texts:?}"
         );
+    }
+
+    #[test]
+    fn a_name_that_contains_random_is_not_non_deterministic() {
+        assert!(!is_non_deterministic(
+            "CREATE AGGREGATE sum_int_randomrestart (int4) (stype = int4, sfunc = int4pl);\nSELECT 1;\n"
+        ));
+        assert!(!is_non_deterministic("SELECT known, snowy FROM t;"));
+        assert!(is_non_deterministic("SELECT random();"));
+        assert!(is_non_deterministic("SELECT * FROM t ORDER BY RANDOM ( );"));
+        assert!(is_non_deterministic("SELECT now();"));
+        assert!(is_non_deterministic("SELECT 'now'::timestamp;"));
+        assert!(is_non_deterministic("SELECT current_time;"));
+        assert!(is_non_deterministic("SELECT current_timestamp;"));
     }
 
     #[test]

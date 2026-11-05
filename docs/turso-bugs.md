@@ -561,6 +561,12 @@ Issue: https://github.com/tursodatabase/turso/issues/11417
   count leaves out. The INDEX oracle now does not take a SELECT with a
   window function.
 
+- The non-deterministic filter matched function names as substrings. The
+  aggregate name `sum_int_randomrestart` (from a `CREATE AGGREGATE` of the
+  PostgreSQL regression tests) contains `random`. camp-index3 had 2928
+  queue entries with that statement, and it skipped 14,233 of 14,399 test
+  cases. The filter now matches whole names only.
+
 ## Campaign log
 
 tursopg at submodule commit ff97c22, 4 cores, one `afl-fuzz` instance per
