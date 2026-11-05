@@ -171,13 +171,31 @@ impl Oracle for Norec {
         let mut trans = template.tree.extract(template_stmt);
         let trans_root = trans.root.expect("root");
 
-        let src_orders =
-            ir_wrapper::get_ir_node_in_stmt_with_type(t, stmt, IrType::SortClause, false);
+        // Find the template nodes before anything is copied in. A copied
+        // WHERE clause can hold a subquery with its own FROM, ORDER BY and
+        // `true`, and a later search finds those first.
         let dest_orders =
             ir_wrapper::get_ir_node_in_stmt_with_type(&trans, trans_root, IrType::SortClause, true);
         let Some(dest_order) = dest_orders.first().copied() else {
             return Vec::new();
         };
+        let dest_consts =
+            ir_wrapper::get_ir_node_in_stmt_with_type(&trans, trans_root, IrType::AexprConst, true);
+        let Some(dest_where) = dest_consts
+            .iter()
+            .copied()
+            .find(|&c| trans.to_string(c).trim().eq_ignore_ascii_case("true"))
+        else {
+            return Vec::new();
+        };
+        let dest_froms =
+            ir_wrapper::get_ir_node_in_stmt_with_type(&trans, trans_root, IrType::FromClause, true);
+        let Some(dest_from) = dest_froms.first().copied() else {
+            return Vec::new();
+        };
+
+        let src_orders =
+            ir_wrapper::get_ir_node_in_stmt_with_type(t, stmt, IrType::SortClause, false);
         if let Some(src_order) = src_orders.first().copied() {
             let copy = trans.import(t, src_order);
             if !trans.swap_node(trans_root, dest_order, Some(copy)) {
@@ -194,15 +212,6 @@ impl Oracle for Norec {
         let Some(src_where_expr) = src_wheres.first().and_then(|w| t.left(*w)) else {
             return Vec::new();
         };
-        let dest_consts =
-            ir_wrapper::get_ir_node_in_stmt_with_type(&trans, trans_root, IrType::AexprConst, true);
-        let Some(dest_where) = dest_consts
-            .iter()
-            .copied()
-            .find(|&c| trans.to_string(c).trim().eq_ignore_ascii_case("true"))
-        else {
-            return Vec::new();
-        };
         let where_copy = trans.import(t, src_where_expr);
         if !trans.swap_node(trans_root, dest_where, Some(where_copy)) {
             return Vec::new();
@@ -212,11 +221,6 @@ impl Oracle for Norec {
         let src_froms =
             ir_wrapper::get_ir_node_in_stmt_with_type(t, stmt, IrType::FromClause, false);
         let Some(src_from) = src_froms.first().copied() else {
-            return Vec::new();
-        };
-        let dest_froms =
-            ir_wrapper::get_ir_node_in_stmt_with_type(&trans, trans_root, IrType::FromClause, true);
-        let Some(dest_from) = dest_froms.first().copied() else {
             return Vec::new();
         };
         let from_copy = trans.import(t, src_from);
@@ -315,6 +319,25 @@ mod tests {
         );
         assert_eq!(texts[1], "SELECT COALESCE ( sum ( countt ), 0 ) FROM ( SELECT ALL CASE WHEN ( v1 = 1 ) THEN 1 ELSE 0 END AS countt FROM v0 ORDER BY v2 ) AS ress");
         assert!(parse_query(&texts[1]).is_some());
+    }
+
+    #[test]
+    fn keeps_the_from_clause_when_the_where_clause_has_a_subquery() {
+        let mut m = Mutator::new(1);
+        let mut q = parse_query(
+            "SELECT COUNT(*) FROM v0 WHERE (SELECT c3 FROM v9 ORDER BY c3 LIMIT 1) = 0 ORDER BY v2;",
+        )
+        .unwrap();
+        let stmt = ir_wrapper::get_first_stmt_from_root(&q.tree, q.root).unwrap();
+        let forms = Norec.post_fix_transform_select_stmt(&mut m, &mut q.tree, stmt, 0);
+        assert_eq!(forms.len(), 2);
+        let text = forms[1].to_string(forms[1].root.unwrap());
+        assert!(
+            text.contains("SELECT c3 FROM v9 ORDER BY c3 LIMIT 1"),
+            "{text}"
+        );
+        assert!(text.ends_with("FROM v0 ORDER BY v2 ) AS ress"), "{text}");
+        assert!(parse_query(&text).is_some());
     }
 
     #[test]
