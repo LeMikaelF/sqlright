@@ -28,7 +28,7 @@ pub struct FixContext {
     pub v_table_names_single: Vec<String>,
     /// Tables created by the current statement.
     pub v_create_table_names_single: Vec<String>,
-    /// Aliases defined in the current statement.
+    /// Output column aliases (`c AS a`) defined in the current statement.
     pub v_alias_names_single: Vec<String>,
     /// Table name to its aliases, in the current statement.
     pub m_table2alias_single: HashMap<String, Vec<String>>,
@@ -361,7 +361,7 @@ impl Mutator {
                 }
             }
 
-            // Aliases. All aliases are treated as aliases of a table.
+            // Aliases.
             let mut alias_idx = 0;
             for &id in ir_to_fix_vec {
                 if fixed.contains(&id) {
@@ -393,14 +393,19 @@ impl Mutator {
                 }
                 let alias = self.gen_alias_name();
                 t.set_str_val(id, alias.clone());
-                if !is_bad_table_name(&closest) {
-                    self.ctx
-                        .m_table2alias_single
-                        .entry(closest)
-                        .or_default()
-                        .push(alias.clone());
+                // An alias in an alias clause (`FROM t a`, `(...) AS a`) names
+                // a table. Any other alias (`c AS a`) names an output column.
+                if ir_wrapper::is_ir_in_type(t, id, IrType::AliasClause) {
+                    if !is_bad_table_name(&closest) {
+                        self.ctx
+                            .m_table2alias_single
+                            .entry(closest)
+                            .or_default()
+                            .push(alias);
+                    }
+                } else {
+                    self.ctx.v_alias_names_single.push(alias);
                 }
-                self.ctx.v_alias_names_single.push(alias);
                 fixed.insert(id);
             }
 
@@ -1293,6 +1298,51 @@ mod tests {
             m.validate(tree, r);
         }
         assert_eq!(m.ctx.v_table_without_column_types.len(), 1);
+    }
+
+    #[test]
+    fn a_table_alias_is_never_used_as_a_column() {
+        let oracle = AnySelect;
+        let sql = "CREATE TABLE t (a INT, b TEXT); SELECT a FROM t s WHERE b = 'y' AND a > 1 GROUP BY a; SELECT count(*) FROM (SELECT a FROM t) AS q WHERE a = 1;";
+        for seed in 0..200 {
+            let mut m = Mutator::new(seed);
+            let mut q = parse_query(sql).unwrap();
+            m.pre_validate();
+            let (mut trees, _types) = m.pre_fix_transform(&oracle, &mut q.tree, q.root);
+            for tree in trees.iter_mut() {
+                let r = tree.root.unwrap();
+                m.validate(tree, r);
+            }
+            for tree in &trees {
+                let r = tree.root.unwrap();
+                let mut table_aliases = Vec::new();
+                let mut columns = Vec::new();
+                for id in tree.all_nodes(r) {
+                    if tree.data_type(id) == DataType::AliasName
+                        && ir_wrapper::is_ir_in_type(tree, id, IrType::AliasClause)
+                    {
+                        table_aliases.push(tree.str_val(id).to_string());
+                    }
+                    if tree.data_type(id) == DataType::ColumnName {
+                        columns.push(tree.str_val(id).to_string());
+                    }
+                }
+                for c in &columns {
+                    assert!(
+                        !table_aliases.contains(c),
+                        "seed {seed}: table alias {c} used as a column in {}",
+                        tree.to_string(r)
+                    );
+                }
+            }
+        }
+    }
+
+    #[test]
+    fn only_the_system_columns_of_tursopg_are_used() {
+        let mut m = Mutator::new(1);
+        m.pre_validate();
+        assert_eq!(m.v_sys_column_name, vec!["oid".to_string()]);
     }
 
     use crate::mutator::StmtType;

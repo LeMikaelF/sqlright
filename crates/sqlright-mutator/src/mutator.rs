@@ -249,7 +249,10 @@ impl Mutator {
             .iter()
             .map(|s| s.to_string())
             .collect();
-        self.v_sys_column_name = ["oid", "tableoid", "xmin", "cmin", "xmax", "cmax", "ctid"]
+        // The C++ list was `oid`, `tableoid`, `xmin`, `cmin`, `xmax`, `cmax`
+        // and `ctid`. tursopg has only `oid`, and each other name makes the
+        // statement fail with `no such column`.
+        self.v_sys_column_name = ["oid"]
             .iter()
             .map(|s| s.to_string())
             .collect();
