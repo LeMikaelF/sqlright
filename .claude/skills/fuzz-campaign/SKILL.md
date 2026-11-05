@@ -112,8 +112,12 @@ H=$PWD/crates/sqlright-harness-tursopg/target/release/sqlright-harness-tursopg
      test, run `cargo test --release` and `cargo clippy --release
      --workspace --all-targets`. A rebuilt `libsqlright_afl.so` takes
      effect only in a restarted instance.
-   - A crash: reproduce under the limits, find the statement by bisecting
-     prefixes of the file, record the panic message and location.
+   - A crash: group the crash files by panic location first, because
+     AFL++ saves one file per new path and a known panic gives many:
+     `(ulimit -v 4000000; python3 -I scripts/group_crashes.py "work/camp-norec/default/crashes/id:*" 100)`.
+     Then reproduce one file of each group under the limits, find the
+     statement by bisecting prefixes of the file, and record the panic
+     message and location.
    - A hang: find the slow statement with `timeout 30` and record the
      measured time. Do not try to make it finish.
 5. Report each new turso finding as a GitHub issue when you find it (see
