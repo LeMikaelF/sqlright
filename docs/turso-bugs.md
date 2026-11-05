@@ -443,6 +443,31 @@ Found by: the TLP instance of the 12-hour campaign of 2026-11-05
 
 Issue: https://github.com/tursodatabase/turso/issues/11436
 
+## 17. Crash: a FROM subquery reads a CTE column without a FROM clause
+
+A FROM subquery without a FROM clause names a column of a CTE. When
+another subquery reads the CTE, turso panics in the code generation.
+
+```sql
+WITH c AS (SELECT 5 AS x) SELECT * FROM (SELECT x WHERE EXISTS (SELECT 1 FROM c));
+```
+
+```text
+thread 'main' panicked at core/translate/expr/translator.rs:2771:22:
+Outer query subquery result_columns_start_reg must be set in program
+```
+
+Without `EXISTS (SELECT 1 FROM c)`, turso gives `no such column: x`
+(the fix of #9521 plans only the CTEs that a subquery reads). The
+SQLite frontend on main (65154da) panics the same way. SQLite gives
+`no such column: x`.
+
+Found by: the NoREC instance of the 12-hour campaign of 2026-11-05, as
+an AFL++ crash (an INSERT with twelve nested CTEs named `x`). Reduced
+with a reducer that removes parenthesized groups.
+
+Issue: https://github.com/tursodatabase/turso/issues/11462
+
 ## Campaign log
 
 tursopg at submodule commit ff97c22, 4 cores, one `afl-fuzz` instance per
