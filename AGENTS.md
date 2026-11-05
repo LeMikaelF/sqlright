@@ -210,6 +210,11 @@ purpose:
   template before it copies the original clauses in. When the WHERE
   clause held a subquery, a later search found the FROM of that
   subquery, and the two queries of a pair read different tables.
+- The NoREC oracle removes every non-empty window clause from the
+  original form. The C++ removed the first over clause, which is often
+  the empty one of another function call (`round(c1)` inside WITHIN
+  GROUP). Then `count(*) OVER (ORDER BY sum(c1))` stayed: the aggregate
+  makes one group, and the window count is 1 even with no matching row.
 - The INDEX oracle keeps an index on an expression or with a WHERE
   clause in every run. The expression runs on each insert and can fail
   (`1 / c1` with `c1 = 0`), so the index rejects rows by design, as in
