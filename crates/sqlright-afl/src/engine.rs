@@ -170,8 +170,8 @@ impl Engine {
     /// Add one queue entry (a saved test case) to the library, like the
     /// SQLite variant does for every interesting input.
     pub fn add_queue_entry(&mut self, text: &str) {
-        let seed = Self::first_run(text);
-        let Some(mut q) = parse_query(seed) else {
+        let seed = without_result_markers(Self::first_run(text));
+        let Some(mut q) = parse_query(&seed) else {
             return;
         };
         let stripped = self.mutator.extract_struct(&mut q.tree, q.root);
@@ -212,7 +212,7 @@ impl Engine {
     pub fn generate_cases(&mut self, seed: &str) -> Vec<TestCase> {
         let mut cases = Vec::new();
         self.stats.seeds += 1;
-        let seed_text = Self::first_run(seed).to_string();
+        let seed_text = without_result_markers(Self::first_run(seed));
         let Some(mut q) = parse_query(&seed_text) else {
             self.stats.total_input_failed += 1;
             return cases;
@@ -482,6 +482,17 @@ impl Engine {
     }
 }
 
+/// The text without the lines that hold result-marker text. A queue entry
+/// holds the `SELECT 'BEGIN VERI n'` statements of its test case. If they
+/// get into the library, a mutated SELECT can print `BEGIN VERI n` as a
+/// row, and that row breaks the result blocks of the output.
+pub fn without_result_markers(text: &str) -> String {
+    text.lines()
+        .filter(|l| !l.contains("BEGIN VERI ") && !l.contains("END VERI "))
+        .flat_map(|l| [l, "\n"])
+        .collect()
+}
+
 /// The first line the harness writes: this marker and the FNV-1a hash of its input.
 pub const INPUT_MARKER: &str = "-- SQLRIGHT INPUT";
 
@@ -568,6 +579,20 @@ mod tests {
                 c.marked_runs[0]
             );
         }
+    }
+
+    #[test]
+    fn result_markers_of_a_queue_entry_do_not_get_into_the_library() {
+        let entry = "CREATE TABLE v0 (c1 INT); \nSELECT 'BEGIN VERI 0'; \nSELECT 'BEGIN VERI 0' FROM v0 WHERE c1 = 1; \nSELECT c1 FROM v0 WHERE c1 = 2; \nSELECT 'END VERI 0'; \n";
+        assert_eq!(
+            without_result_markers(entry),
+            "CREATE TABLE v0 (c1 INT); \nSELECT c1 FROM v0 WHERE c1 = 2; \n"
+        );
+        let mut engine = Engine::new(test_config("TLP"), 1).unwrap();
+        engine.add_queue_entry(entry);
+        let selects = &engine.mutator.all_valid_pstr_vec;
+        assert!(selects.iter().any(|s| s.contains("= 2")), "{selects:?}");
+        assert!(!selects.iter().any(|s| s.contains("VERI")), "{selects:?}");
     }
 
     #[test]
