@@ -317,8 +317,10 @@ statement in a transaction block (NoREC), a grouped SELECT whose target
 is not a grouping expression (TLP), one value printed as a double and
 as an integer (TLP), and a marker literal (`SELECT 'BEGIN VERI 0' FROM v0`)
 that came from the markers of a queue entry into the library (TLP), and an
-`OR` wrapper printed inside an `AND` without parentheses (EET). Each was a
-SQLRight problem and was fixed at its source, not by filtering reports. A
+`OR` wrapper printed inside an `AND` without parentheses (EET), a pair with
+two forms that shifted the result blocks of every later pair (DQE), and a
+`CREATE TABLE AS SELECT` table whose columns have no type in tursopg
+(LATERAL). Each was a SQLRight problem and was fixed at its source, not by filtering reports. A
 flood that is a real database bug gets one entry in `docs/turso-bugs.md`
 with a minimal reproducer and an issue. When the bug would hide every
 other finding of an oracle, the oracle skips the form that shows it, with
