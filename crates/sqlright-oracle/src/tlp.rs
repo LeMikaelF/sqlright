@@ -44,7 +44,7 @@ const TEMPLATES: &[&str] = &[
 ];
 
 /// Aggregate functions of PostgreSQL and of the turso extensions.
-const AGGREGATE_NAMES: &[&str] = &[
+pub(crate) const AGGREGATE_NAMES: &[&str] = &[
     "count",
     "sum",
     "min",

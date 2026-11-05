@@ -34,6 +34,9 @@ pub struct FixContext {
     pub m_table2alias_single: HashMap<String, Vec<String>>,
     /// Column name to its type.
     pub m_column2datatype: HashMap<String, ColType>,
+    /// Column name to the type name of its definition, as written
+    /// (`NUMERIC(10, 2)`, `text`).
+    pub m_column2typename: HashMap<String, String>,
     /// Columns used in the current statement, to type the literals.
     pub v_column_names_single: Vec<String>,
     /// Tables used in `table.column` references in the current statement.
@@ -439,19 +442,34 @@ impl Mutator {
                         .or_default()
                         .push(new_name.clone());
                     if flag == DataFlag::Define {
-                        let col_type = match t.parent(id).and_then(|p| t.right(p)) {
-                            Some(r) if t.ty(r) == IrType::Typename => t.typename_ir_get_type(r),
-                            _ => ColType::Unknown,
+                        let typename = match t.parent(id).and_then(|p| t.right(p)) {
+                            Some(r) if t.ty(r) == IrType::Typename => Some(r),
+                            _ => None,
                         };
-                        self.ctx.m_column2datatype.insert(new_name, col_type);
+                        let col_type =
+                            typename.map_or(ColType::Unknown, |r| t.typename_ir_get_type(r));
+                        self.ctx
+                            .m_column2datatype
+                            .insert(new_name.clone(), col_type);
+                        if let Some(r) = typename {
+                            self.ctx.m_column2typename.insert(new_name, t.to_string(r));
+                        }
                     } else {
                         let mut cols = Vec::new();
                         collect_ir(t, stmt, &[DataType::ColumnName], &mut cols);
-                        let prev_type = match cols.first() {
-                            Some(c) => self.ctx.column_type(t.str_val(*c)),
+                        let prev = cols.first().map(|c| t.str_val(*c).to_string());
+                        let prev_type = match &prev {
+                            Some(c) => self.ctx.column_type(c),
                             None => ColType::Unknown,
                         };
-                        self.ctx.m_column2datatype.insert(new_name, prev_type);
+                        self.ctx
+                            .m_column2datatype
+                            .insert(new_name.clone(), prev_type);
+                        if let Some(name) =
+                            prev.and_then(|c| self.ctx.m_column2typename.get(&c).cloned())
+                        {
+                            self.ctx.m_column2typename.insert(new_name, name);
+                        }
                     }
                 } else if n.data_type == DataType::ColumnName && n.data_flag == DataFlag::Undefine {
                     let closest = self
@@ -1236,6 +1254,14 @@ mod tests {
         );
         assert_eq!(out[3], "DROP TABLE v0");
         assert_eq!(m.ctx.v_table_names, Vec::<String>::new());
+        assert_eq!(
+            m.ctx.m_column2typename.get("c1").map(String::as_str),
+            Some("INT")
+        );
+        assert_eq!(
+            m.ctx.m_column2typename.get("c2").map(String::as_str),
+            Some("text")
+        );
         let runs = m.post_fix_transform(&oracle, &mut trees, &types);
         let (marked, unmarked) = Mutator::ir_to_string(&runs[0]);
         assert!(marked.contains("SELECT 'BEGIN VERI 0'"));

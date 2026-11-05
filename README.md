@@ -32,7 +32,9 @@ target/release/sqlright seeds --from turso/postgres/conformance/pg-sqltests --ou
 target/release/sqlright run --oracle NOREC --harness $H --in work/seeds-pg --lib work/seeds-turso --out work/norec --time 3600 --jobs 2
 ```
 
-Oracles: `NOREC`, `TLP`, `INDEX`. Bug reports appear in `work/norec/bugs/`
+Oracles: `NOREC`, `TLP`, `INDEX` (from SQLRight), `EET`, `DQE`, `LATERAL`
+(from SQLancer; see the oracle table in [AGENTS.md](AGENTS.md)). Bug
+reports appear in `work/norec/bugs/`
 as `bug_<oracle>_<hash>.txt` (the report) and `.sql` (the test case).
 `stats_<pid>.txt` in the same directory counts what the mutator did.
 
@@ -44,6 +46,7 @@ target/release/sqlright minimize work/norec/bugs/bug_NOREC_<hash>.sql --oracle N
 ```
 
 `replay` runs the test case on the harness and prints the oracle verdict.
+The `work/norec` and `NOREC` above stand for any of the oracles.
 `minimize` removes oracle pairs, statements and parts of statements while
 the oracle still fails. `scripts/triage.sh <out-dir> <oracle>` minimizes
 every report of a campaign, and `scripts/group_failures.py` groups the

@@ -36,7 +36,8 @@ crates/sqlright-ir/         The IR: IrTree arena, IrNode, IrType, DataType, Data
 crates/sqlright-pg-parser/  Lexer, LALR driver, generated tables and actions. parse_query().
 crates/sqlright-mutator/    Mutator (libraries, mutation strategies), ir_wrapper, fix
                             (name instantiation), the Oracle trait, reloption generator.
-crates/sqlright-oracle/     NOREC, TLP and INDEX oracles; result extraction and comparison.
+crates/sqlright-oracle/     The oracles (NOREC, TLP, INDEX, EET, DQE, LATERAL); result
+                            extraction and comparison.
 crates/sqlright-afl/        Engine (the fuzz loop of afl-fuzz.cpp) and the afl_custom_* C API.
 crates/sqlright-cli/        The `sqlright` command.
 crates/sqlright-harness-tursopg/  The AFL++ target. Its own Cargo workspace (see below).
@@ -76,7 +77,7 @@ and repeats the marker in its output.
 
 | Variable | Meaning | Default |
 |---|---|---|
-| `SQLRIGHT_ORACLE` | `NOREC`, `TLP` or `INDEX` | `NOREC` |
+| `SQLRIGHT_ORACLE` | `NOREC`, `TLP`, `INDEX`, `EET`, `DQE` or `LATERAL` | `NOREC` |
 | `SQLRIGHT_SEED_DIR` | the afl-fuzz input directory, also used for the library | none |
 | `SQLRIGHT_INIT_LIB` | more library directories, separated by `:` | none |
 | `SQLRIGHT_OUTPUT` | the file the harness writes | `/tmp/sqlright_output.txt` |
@@ -89,6 +90,80 @@ and repeats the marker in its output.
 `sqlright run` sets all of them. It also sets `AFL_CUSTOM_MUTATOR_ONLY=1`,
 `AFL_DISABLE_TRIM=1` and `AFL_FRAMESHIFT_DISABLE=1`, because byte-level
 mutations of SQL text only make statements that do not parse.
+
+## Oracles
+
+Each oracle takes a SELECT statement and makes two or three forms of it
+that must give the same result. The oracle decides which SELECTs it can
+use (`is_oracle_select_stmt`), the mutator keeps such SELECTs in a
+library, and the forms are made after the names are filled in
+(`post_fix_transform_select_stmt`).
+
+| Oracle | Takes | Compares | From |
+|---|---|---|---|
+| `NOREC` | `SELECT count(*) FROM ... WHERE p` | the count with `SUM(CASE WHEN p THEN 1 ELSE 0 END)` over the rows | SQLRight |
+| `TLP` | one target, aggregate, DISTINCT, GROUP BY or HAVING, `WHERE p` | the rows with the union of the rows for `p`, `NOT p` and `p IS NULL` | SQLRight |
+| `INDEX` | any SELECT without LIMIT | the row counts and aggregate values of a run with indexes and a run without | SQLRight |
+| `EET` | `SELECT ... FROM ... WHERE p`, no window function | the rows with the rows of the same SELECT after its predicate and some targets are wrapped in forms the optimizer cannot simplify | SQLancer (Jiang and Su, OSDI 2024) |
+| `DQE` | `SELECT ... FROM t WHERE p` on one table | `SELECT *`, `UPDATE t SET c = c ... RETURNING *` and `DELETE ... RETURNING *` with the same WHERE clause | SQLancer (Song and others, ICSE 2023) |
+| `LATERAL` | `SELECT ... FROM t WHERE p` on one table | a query with one or two LATERAL joins (the predicate is the filter of the first) with the same query in its JSON form | SQLancer (LeMikaelF branch `claude/sqlancer-oracle-mysql-postgres-6i35zm`), from the turso simulator |
+
+The three oracles from SQLancer compare whole result rows as sorted
+multisets (`shape::compare_row_sets`). A row of NULLs is an empty line
+and counts. Two numbers that differ by less than one part in a billion
+are the same value, because two plans can add floating point values in
+another order. A result with more than 2000 rows is not compared.
+
+The rows of a SELECT can depend on the plan even on a correct database.
+`shape::output_depends_on_the_plan` rejects such SELECTs: a window
+function, an aggregate whose value depends on the row order
+(`string_agg`), a `GROUP BY` with a target that is neither grouped nor
+aggregated, `HAVING` without `GROUP BY`, and a bare column next to an
+aggregate. tursopg accepts the last three (PostgreSQL rejects them) and
+returns the value of some row.
+
+EET takes its predicates `p` (for `true_expr(p)` and `false_expr(p)`)
+from the boolean sub-expressions of the WHERE clause itself, so they
+have the names of the test case. The dead branch of a CASE is `NULL` or
+a copy of the expression. At most 8 rules are applied per statement.
+
+DQE needs `RETURNING`, which tursopg has, instead of the row-id and
+`updated` columns SQLancer adds to every table. The DELETE removes the
+rows, so later oracle SELECTs of the test case see a smaller table; each
+oracle SELECT is compared only with its own UPDATE and DELETE. A test
+case with a trigger is not compared. A WHERE clause with a subquery on
+the same table is not used: the DELETE removes rows the subquery reads.
+
+LATERAL builds its query from the tables of the test case (the
+instantiation context knows every table, its columns and their type
+names). tursopg has no `json_agg` and no `json_build_object`, so the
+JSON form is `json_to_recordset((SELECT json_group_array(json_object(...))
+...)) AS s0(j0 INT, ...)`. The column definition list cannot have a type
+modifier, so the declared type is the type name without parameters. Only
+columns whose values come back from JSON unchanged are selected: integer,
+floating point, text, boolean, date, timestamp and time. `NUMERIC` loses
+its scale in JSON (`1.50` becomes `1.5`), `CHAR` always has a modifier,
+and `UUID`, `JSONB` and arrays cannot go into JSON; such columns are used
+in predicates only.
+
+### SQLancer oracles that are not ported
+
+- `PQS` (pivoted query synthesis) evaluates a random expression on a
+  pivot row inside the fuzzer. That needs a PostgreSQL expression
+  evaluator, which SQLRight does not have.
+- `CERT` compares the row estimates of `EXPLAIN` for a query and a more
+  restrictive query. tursopg's `EXPLAIN` prints bytecode without row
+  estimates.
+- `CODDTest` runs a subquery, puts its result as a constant into the
+  outer query, and compares. SQLRight makes a whole test case before it
+  runs anything, so it cannot build a statement from a result.
+- `DQP` runs a query under several planner settings. tursopg has no
+  planner settings. `INDEX` is the closest form: it changes the plan by
+  removing the indexes.
+- The TLP variants (`WHERE`, `DISTINCT`, `GROUP_BY`, `HAVING`,
+  `AGGREGATE`) are all in `TLP`.
+- `FUZZER` only runs random statements. AFL++ does that for every
+  oracle, and the crashes and hangs it saves are the result.
 
 ## Build
 
@@ -233,7 +308,7 @@ python3 -I scripts/group_failures.py "work/norec/bugs/*.sql" 100
 
 (`scripts/group_failures.py` is that script: it
 splits the `.sql` file and the harness output at the `BEGIN VERI n` and
-`END VERI n` markers and groups the mismatching pairs.) The three floods
+`END VERI n` markers and groups the mismatching pairs.) The floods
 of the first tursopg campaigns were: a non-boolean WHERE expression that
 tursopg accepts (NoREC), window functions taken for aggregates (TLP), and
 `count(*) FILTER (...)` (NoREC), lost result markers after a failed
@@ -267,6 +342,9 @@ bug gets one entry in `docs/turso-bugs.md` with a minimal reproducer.
   port.
 - tursopg has no `random()`-style non-determinism filter beyond the
   function name list in `crates/sqlright-afl/src/engine.rs`.
+- The harness prints NULL as nothing, so a row `(1, NULL, 2)` and a row
+  `(1, 2, NULL)` print the same. The row comparison of EET, DQE and
+  LATERAL cannot see a NULL that moved to another column.
 - AFL++ reports some instability for the harness (the coverage of a run
   changes with hash map iteration order inside turso). AFL++ handles it; it
   only lowers the value of the coverage feedback.

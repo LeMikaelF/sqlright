@@ -6,7 +6,7 @@ use std::path::PathBuf;
 /// The variables, with their defaults.
 #[derive(Debug, Clone)]
 pub struct Config {
-    /// `SQLRIGHT_ORACLE`: `NOREC`, `TLP` or `INDEX`.
+    /// `SQLRIGHT_ORACLE`: `NOREC`, `TLP`, `INDEX`, `EET`, `DQE` or `LATERAL`.
     pub oracle: String,
     /// `SQLRIGHT_INIT_LIB`: directories of SQL files that seed the mutation
     /// library, separated by `:`. The AFL++ input directory is added too

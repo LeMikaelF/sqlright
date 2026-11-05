@@ -299,13 +299,17 @@ mod tests {
             }
         }
         let mut all = AllCompRes {
-            res_str: "BEGIN VERI 0 \nEND VERI 0 \nEND VERI 0 \nBEGIN VERI 1 \n1 \nEND VERI 1 \n".into(),
+            res_str: "BEGIN VERI 0 \nEND VERI 0 \nEND VERI 0 \nBEGIN VERI 1 \n1 \nEND VERI 1 \n"
+                .into(),
             ..Default::default()
         };
         compare_query_result(&AlwaysFail, &mut all);
         assert_eq!(all.final_res, Some(OraCompRes::Error));
         let mut all = AllCompRes {
-            v_res_str: vec!["BEGIN VERI 0 \n1 \nEND VERI 0 \n".into(), "BEGIN VERI 0 \nEND VERI 0 \nEND VERI 0 \n".into()],
+            v_res_str: vec![
+                "BEGIN VERI 0 \n1 \nEND VERI 0 \n".into(),
+                "BEGIN VERI 0 \nEND VERI 0 \nEND VERI 0 \n".into(),
+            ],
             ..Default::default()
         };
         compare_query_results_cross_run(&AlwaysFail, &mut all);
