@@ -515,6 +515,12 @@ more expression that PostgreSQL rejects (comment
 https://github.com/tursodatabase/turso/issues/11387#issuecomment-6649270385).
 Related: https://github.com/tursodatabase/turso/issues/10618 (an untyped literal, `'x' / 1`).
 
+`text = boolean` is accepted too (PostgreSQL: `operator does not exist: text =
+boolean`). With a long string of digits it is slow: `SELECT repeat('2',
+976796771) = FALSE` takes 12.3 seconds. NoREC hangs 000000 and 000001 of the
+12-hour campaign had this cause. Comment:
+https://github.com/tursodatabase/turso/issues/11387#issuecomment-6652189285
+
 ## 18. lpad and rpad are about 11 times slower than repeat
 
 ```sql
@@ -550,6 +556,8 @@ Issue: https://github.com/tursodatabase/turso/issues/11417
   after a restart with a rebuilt `libsqlright_afl.so`.
   TLP reports `bug_TLP_dfd1111479ded61c` and `bug_TLP_850d9d3fcbe3cabe` came
   from the old library and have the same cause.
+  NoREC report `bug_NOREC_08c86f7b2460e9c6` too: there the literal comes out
+  in an error message that prints the statement AST.
 - TLP crash 000000 (src 003184) is `quote_literal(lpad('temp', 704328054))`.
   `quote_literal` asks for 2 bytes per character (1,408,656,110 bytes) and
   the process aborts under the 4 GB limit. PostgreSQL asks for the same
