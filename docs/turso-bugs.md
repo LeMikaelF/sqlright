@@ -303,6 +303,9 @@ Expected PostgreSQL behavior: `CREATE TABLE` fails with
 
 Found by: the INDEX instance of the 12-hour campaign, as an AFL++ hang
 (`default/hangs/`).
+camp-tlp3 hang 000000 (src 009934) is the same: after `CREATE TABLE v0 (c1
+NUMERIC(217000279, 217000279) PRIMARY KEY, ...)`, one insert does not stop
+in 60 seconds. Without the scale, the file takes 0.05 seconds.
 
 Issue: https://github.com/tursodatabase/turso/issues/11397
 
