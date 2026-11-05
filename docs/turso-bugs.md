@@ -580,6 +580,24 @@ https://github.com/tursodatabase/turso/issues/9663 (open, its comment has the
 `CREATE INDEX i6 ON v0 (c1) WHERE COALESCE(oid, 1) > 0`), and again by
 `bug_INDEX_44242e42ca0ec57e`.
 
+## 21. A column PRIMARY KEY with a table PRIMARY KEY is dropped
+
+```sql
+CREATE TABLE t (a int PRIMARY KEY, b int, PRIMARY KEY (a, b));   -- tursopg: accepted
+INSERT INTO t VALUES (1, 1);
+INSERT INTO t VALUES (1, 2);                                     -- tursopg: accepted
+SELECT count(*) FROM t;                                          -- tursopg: 2
+```
+
+Only the table-level key is in force. PostgreSQL rejects the CREATE TABLE
+with `multiple primary keys for table "t" are not allowed`. A repeated
+column in the key (`PRIMARY KEY (a, b, a)`) is accepted too.
+
+Issue: https://github.com/tursodatabase/turso/issues/10567 covers the accepted
+statement (comment with the lost key:
+https://github.com/tursodatabase/turso/issues/10567#issuecomment-6661052667).
+Found in two camp-norec2 reports whose failing pair is finding 4.
+
 ## Not turso bugs: harness and oracle limits
 
 - A statement that returns several gigabytes, for example
@@ -630,6 +648,15 @@ https://github.com/tursodatabase/turso/issues/9663 (open, its comment has the
   The TLP oracle now does not take an aggregate SELECT with HAVING.
   `bug_TLP_25ec47f25b3518e4` and `bug_TLP_763374296a259483` (camp-tlp3, old
   library) have the same cause, with `avg(...) ... HAVING`.
+
+- A sample check of the watch script classes (2026-11-05, about 13:00Z):
+  all 85 `PROBABLE #9663` INDEX reports pass when the partial index on
+  `oid` is removed. Both `#11396` INDEX reports pass without the partial
+  index. All 11 TLP HAVING reports are an aggregate with HAVING. All 5
+  `#11386` reports pass without the keys and indexes. 4 of the 54
+  `#11397` hangs, from both sources, take 0.04 seconds without the scale.
+  One TLP report with the label `#11396` (`bug_TLP_763374296a259483`) is
+  the aggregate HAVING false positive.
 
 ## Campaign log
 
