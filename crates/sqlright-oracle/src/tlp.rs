@@ -181,6 +181,22 @@ impl Tlp {
         default_type
     }
 
+    /// False for a SELECT whose result the union of its partitions cannot
+    /// give, even on a correct database.
+    fn partitions_give_the_same_rows(t: &IrTree, stmt: IrId) -> bool {
+        let tlp_type = Self::get_stmt_tlp_type(t, stmt);
+        if tlp_type == TlpType::GroupBy && !Self::target_is_grouped(t, stmt) {
+            return false;
+        }
+        // An aggregate inside an expression (`CASE WHEN count(*) = 1 ...`)
+        // makes the whole table one group. The query returns one row, and
+        // the partitioned form returns one row per partition.
+        !(matches!(
+            tlp_type,
+            TlpType::Normal | TlpType::Distinct | TlpType::Having
+        ) && Self::has_aggregate_call(t, stmt))
+    }
+
     /// True when the single select target is one of the GROUP BY
     /// expressions. A column that is neither grouped nor aggregated has an
     /// arbitrary value per group (PostgreSQL rejects the query, tursopg
@@ -579,18 +595,7 @@ impl Oracle for Tlp {
         {
             return false;
         }
-        let tlp_type = Self::get_stmt_tlp_type(t, stmt);
-        if tlp_type == TlpType::GroupBy && !Self::target_is_grouped(t, stmt) {
-            return false;
-        }
-        // An aggregate inside an expression (`CASE WHEN count(*) = 1 ...`)
-        // makes the whole table one group. The query returns one row, and
-        // the partitioned form returns one row per partition.
-        if matches!(
-            tlp_type,
-            TlpType::Normal | TlpType::Distinct | TlpType::Having
-        ) && Self::has_aggregate_call(t, stmt)
-        {
+        if !Self::partitions_give_the_same_rows(t, stmt) {
             return false;
         }
         !t.is_empty(froms[0]) && !t.is_empty(wheres[0])
@@ -638,6 +643,11 @@ impl Oracle for Tlp {
         first.detach_node(first_root, where_clause);
         first.deep_drop(where_clause);
 
+        // The names are filled in after `is_oracle_select_stmt`: the
+        // template `SELECT x ... GROUP BY x` can become `SELECT c2 ... GROUP BY c1`.
+        if !Self::partitions_give_the_same_rows(t, stmt) {
+            return Vec::new();
+        }
         let tlp_type = Self::get_stmt_tlp_type(t, stmt);
         let second = match tlp_type {
             TlpType::AggrAvg | TlpType::AggrMax | TlpType::AggrMin | TlpType::AggrSum => {
@@ -770,6 +780,23 @@ mod tests {
             sqlright_pg_parser::parse_query("SELECT avg(c1) FROM v0 WHERE c1 > 0;").unwrap();
         let stmt = sqlright_mutator::ir_wrapper::get_first_stmt_from_root(&q.tree, q.root).unwrap();
         assert!(tlp.is_oracle_select_stmt(&mut q.tree, stmt));
+    }
+
+    #[test]
+    fn gives_no_forms_when_the_filled_in_target_is_not_grouped() {
+        let mut m = Mutator::new(3);
+        let mut q = parse_query("SELECT c2 FROM v0 WHERE c2 > 1 GROUP BY c1;").unwrap();
+        let stmt = ir_wrapper::get_first_stmt_from_root(&q.tree, q.root).unwrap();
+        assert!(Tlp
+            .post_fix_transform_select_stmt(&mut m, &mut q.tree, stmt, 0)
+            .is_empty());
+        let mut q = parse_query("SELECT c1 FROM v0 WHERE c2 > 1 GROUP BY c1;").unwrap();
+        let stmt = ir_wrapper::get_first_stmt_from_root(&q.tree, q.root).unwrap();
+        assert_eq!(
+            Tlp.post_fix_transform_select_stmt(&mut m, &mut q.tree, stmt, 0)
+                .len(),
+            2
+        );
     }
 
     #[test]

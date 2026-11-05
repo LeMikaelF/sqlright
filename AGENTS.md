@@ -197,6 +197,15 @@ purpose:
   GROUP BY expressions. tursopg accepts a target that is neither grouped
   nor aggregated (PostgreSQL rejects it) and returns the value of some row
   of the group, which depends on the plan.
+- The TLP oracle checks the GROUP BY target again after the names are
+  filled in. The template `SELECT x ... GROUP BY x` passes the first check
+  and can become `SELECT c2 ... GROUP BY c1`.
+- The TLP oracle does not take a plain, DISTINCT or HAVING SELECT that
+  calls an aggregate inside an expression (`CASE WHEN count(*) = 1 ...`).
+  Such a query returns one row, and the union of the partitions returns
+  one row per partition.
+- The TLP rewrite of `avg` is `sum(s)::float8 / sum(c)`. Without the cast,
+  the integer division drops the fraction (PostgreSQL does the same).
 - The output of the harness has a first line with the hash of the input.
   The oracle only compares output that belongs to the test case it sent.
 - The harness prints the result markers (`SELECT 'BEGIN VERI n'`) itself
