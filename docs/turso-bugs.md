@@ -455,7 +455,8 @@ https://github.com/tursodatabase/turso/issues/11369#issuecomment-6648530085.
 (`bug_INDEX_fdf166b716500aac`, `bug_INDEX_53be71538a8228f9`):
 `c::text[]` on a `money` column, and `a::serial[]`. tursopg also
 accepts `5::serial`. PostgreSQL gives `type "serial" does not exist`.
-Draft comment for #11408: `work/issues-draft/03-comment-11408-money-and-serial.md`.
+Comment on #11408:
+https://github.com/tursodatabase/turso/issues/11408#issuecomment-6648571421.
 
 ## 17. Crash: a multi-row VALUES list with rows of different lengths
 
