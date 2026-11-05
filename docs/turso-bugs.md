@@ -582,6 +582,30 @@ https://github.com/tursodatabase/turso/issues/11011#issuecomment-6655290026
 
 Issue: https://github.com/tursodatabase/turso/issues/11011
 
+## 21. An expression index changes a comparison with TRUE or FALSE
+
+In a scan, tursopg compares text with `TRUE` or `FALSE` as a number:
+`'1' = TRUE` and `'0' = FALSE` are true. An index on an expression does
+not use this conversion, so the index lookup finds no row.
+
+```sql
+CREATE TABLE t (c text);
+INSERT INTO t VALUES ('1');
+SELECT upper(c) = TRUE FROM t;                    -- 1
+CREATE INDEX i ON t ((upper(c)));
+SELECT count(*) FROM t WHERE upper(c) = TRUE;     -- 0 (1 without the index)
+SELECT count(*) FROM t WHERE NOT (upper(c) = TRUE); -- 0
+```
+
+An index on `(c || '')` does the same. An index on the plain column `c`
+does not change `WHERE c = TRUE`. PostgreSQL rejects `text = boolean`.
+
+Found by: the TLP instance of the 12-hour campaign of 2026-11-05
+(`SELECT * FROM v0` returned 4 rows, the partitions on
+`upper(c1) = TRUE` returned 2).
+
+Issue: https://github.com/tursodatabase/turso/issues/11436
+
 ## Campaign log
 
 tursopg at submodule commit ff97c22, 4 cores, one `afl-fuzz` instance per
