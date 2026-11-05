@@ -230,6 +230,11 @@ gives `column "nosuch" of relation "t" does not exist`.
 Found by: the INDEX oracle, 12-hour campaign (the row counts of the run
 with indexes and the run without indexes were different).
 
+Issues: https://github.com/tursodatabase/turso/issues/11407 (DO UPDATE
+is compiled only with an index) and
+https://github.com/tursodatabase/turso/issues/9664 (unknown name in
+DO UPDATE). Found again on 2026-11-05 (`bug_INDEX_7bdd7c2ec31c66e2`).
+
 ## 9. A partial index with an invalid literal makes every insert fail
 
 tursopg accepts a partial index whose predicate compares a `numeric`
@@ -251,6 +256,12 @@ the literal when it makes the index.
 
 Found by: the INDEX oracle, 12-hour campaign (one of three reports with
 the index rows `1.2` and `1.25`).
+
+Issue: https://github.com/tursodatabase/turso/issues/11396. An
+expression index does the same: `CREATE INDEX i ON t ((c = 'S'))` on a
+`numeric(10, 2)` column makes every insert fail (campaign of
+2026-11-05, `bug_INDEX_2821e5961239e774`). Comment:
+https://github.com/tursodatabase/turso/issues/11396#issuecomment-6649576708.
 
 ## 10. A very large numeric scale makes an insert run for minutes
 
@@ -460,6 +471,13 @@ https://github.com/tursodatabase/turso/issues/11408#issuecomment-6648571421.
 `bug_INDEX_aafe8fc0ea9d36e4` is the `text` to `text[]` index of the
 related gap (`c2::text[]` on a `text` column, PostgreSQL: not IMMUTABLE).
 
+Batch of 04:13 UTC: 15 more INDEX reports have an expression index with
+a cast. Fourteen of them use `text[]`, `int8[]` or `serial[]` on a `text`
+column, or `text[]` on an `int4` or `serial` column. One uses
+`c2::timestamptz` on a `text` column. PostgreSQL rejects that index
+too (not IMMUTABLE). Comment on #11408:
+https://github.com/tursodatabase/turso/issues/11408#issuecomment-6649576030.
+
 ## 17. Crash: a multi-row VALUES list with rows of different lengths
 
 tursopg compares only the first row of a multi-row `VALUES` list with
@@ -491,6 +509,41 @@ in `op_string8` on `INSERT INTO v0 VALUES (1, 'p'), (2, 'q'), ('sun',
 'mon', 'tue', 'wed', 'thu', NULL, 'fri')` into a table with 2 columns.
 
 Issue: https://github.com/tursodatabase/turso/issues/11403 (already open).
+
+Two more crashes (`id:000002`, `id:000003`) have the same cause. One
+panics in `op_real` (`core/vdbe/execute.rs:6227`). The other is a bare
+`VALUES` statement without `INSERT`: `VALUES (1), (1, 2, 3, 4, 5, 6, 'x')`
+panics too. Comment:
+https://github.com/tursodatabase/turso/issues/11403#issuecomment-6649575149.
+
+## 18. integer / text column is accepted
+
+tursopg accepts `1 / b` on a `text` column. It reads the text as a
+number. In an expression index, the row `'0.0'` then fails with
+`division by zero`.
+
+```sql
+CREATE TABLE t (b text);
+CREATE INDEX i ON t ((1 / b));   -- tursopg: accepted
+INSERT INTO t VALUES ('0.0');    -- tursopg: ERROR:  division by zero
+```
+
+Expected PostgreSQL behavior: `operator does not exist: integer / text`.
+On an `integer` column, PostgreSQL gives the same insert error with the
+same index. Thus, the different insert result is correct in itself.
+
+Found by: the INDEX oracle, campaign of 2026-11-05 (3 reports:
+`bug_INDEX_1653c8fb60014856`, `bug_INDEX_589d514e28fe54ca`,
+`bug_INDEX_5e7279dacd3879bb`). A fourth report (`bug_INDEX_8fb1f3fb9837add0`)
+has `1 / c1` on a `serial` column and `INSERT ... VALUES ('0.0')`.
+tursopg stores `'0.0'` as `0` in an integer column. PostgreSQL rejects
+it (`invalid input syntax for type integer: "0.0"`), close to
+https://github.com/tursodatabase/turso/issues/10263. Crash `id:000004`
+is finding 17 again.
+
+Issue: a variant of https://github.com/tursodatabase/turso/issues/11387.
+Comment:
+https://github.com/tursodatabase/turso/issues/11387#issuecomment-6649577460.
 
 ## Campaign log
 
