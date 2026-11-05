@@ -126,7 +126,8 @@ campaign, `bug_NOREC_64871ceb9d417f2f`). The first camp-index3 report
 (`bug_INDEX_743ddb801784aa92`) is the `date` case with `WHERE c10 = '30'`. The
 first camp-tlp3 report (`bug_TLP_fec843579ba6d2de`) is a `timetz` primary key:
 after `INSERT ... VALUES (5)`, `WHERE c = '7'` finds the row through the index,
-because every integer day gives `12:00:00`. With a
+because every integer day gives `12:00:00`. All six reports of camp-norec2
+(`c7 date PRIMARY KEY`, `WHERE c7 = '7'`) are the original `date` case. With a
 valid date (`INSERT INTO v0 VALUES ('2024-01-02')`) both forms agree.
 PostgreSQL rejects the insert (`column "c1" is of type date but expression
 is of type integer`), so the first problem is the accepted insert; given
