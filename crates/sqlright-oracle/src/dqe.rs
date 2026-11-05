@@ -66,21 +66,17 @@ impl Dqe {
         single_table(t, stmt).is_some() && where_expr(t, stmt).is_some()
     }
 
-    /// The three statements as text. The UPDATE needs a column of the
-    /// table; without one, only the SELECT and the DELETE are made.
-    fn statements(table: &SingleTable, predicate: &str, column: Option<&str>) -> Vec<String> {
+    /// The three statements as text.
+    fn statements(table: &SingleTable, predicate: &str, column: &str) -> Vec<String> {
         let from = match &table.alias {
             Some(alias) => format!("{} AS {alias}", table.name),
             None => table.name.clone(),
         };
-        let mut out = vec![format!("SELECT * FROM {from} WHERE {predicate}")];
-        if let Some(column) = column {
-            out.push(format!(
-                "UPDATE {from} SET {column} = {column} WHERE {predicate} RETURNING *"
-            ));
-        }
-        out.push(format!("DELETE FROM {from} WHERE {predicate} RETURNING *"));
-        out
+        vec![
+            format!("SELECT * FROM {from} WHERE {predicate}"),
+            format!("UPDATE {from} SET {column} = {column} WHERE {predicate} RETURNING *"),
+            format!("DELETE FROM {from} WHERE {predicate} RETURNING *"),
+        ]
     }
 }
 
@@ -119,14 +115,19 @@ impl Oracle for Dqe {
             return Vec::new();
         };
         let predicate = t.to_string(predicate);
-        let column = mutator
+        // The result blocks of all pairs are matched by their position, so
+        // every pair must have three forms. The UPDATE needs a column.
+        let Some(column) = mutator
             .ctx
             .m_tables
             .get(&table.name)
             .and_then(|cols| cols.first())
-            .cloned();
+            .cloned()
+        else {
+            return Vec::new();
+        };
         let mut forms = Vec::new();
-        for text in Self::statements(&table, &predicate, column.as_deref()) {
+        for text in Self::statements(&table, &predicate, &column) {
             let Some(q) = parse_query(&format!("{text};")) else {
                 return Vec::new();
             };
@@ -222,14 +223,13 @@ mod tests {
                 "DELETE FROM v0 AS a WHERE a . c1 > 1 OR c2 IS NULL RETURNING *",
             ]
         );
+    }
+
+    #[test]
+    fn gives_no_forms_when_the_table_has_no_known_column() {
+        // A pair with two forms would shift the result blocks of every later pair.
         let texts = forms("SELECT c1 FROM v0 WHERE c1 > 1;", &[]);
-        assert_eq!(
-            texts,
-            vec![
-                "SELECT * FROM v0 WHERE c1 > 1",
-                "DELETE FROM v0 WHERE c1 > 1 RETURNING *",
-            ]
-        );
+        assert!(texts.is_empty());
     }
 
     #[test]
