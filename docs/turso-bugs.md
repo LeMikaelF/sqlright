@@ -454,3 +454,21 @@ mutation library is the same set.
 The INDEX oracle ran once for two hours with the first harness build. The
 NoREC and TLP rounds after the first used the harness that prints the
 result markers itself and the seeds without transaction statements.
+
+### Second 12-hour campaign (2026-11-05, 03:18 to 15:20 UTC)
+
+Three instances on 4 cores. Slow test cases (large `generate_series`
+cross joins) made instances stop at less than 1 test case per second, so
+each oracle was restarted once or twice with `--timeout-ms 2000`. Two
+restarts also took a fixed mutator.
+
+| Instance | Run time | Test cases checked | Reports | Crashes | Hangs | What they were |
+|---|---|---|---|---|---|---|
+| camp-norec | 54 min | 115,039 | 6 | 0 | 0 | 2 finding 4 (`time` column), 4 SQLRight NoREC rewrite bug (fixed) |
+| camp-norec2 | 9.2 h | 1,173,463 | 0 | 99 | 6 | crashes: 98 #11403 (VALUES row length), 1 #11398 (make_date); hangs: 4 finding 10, 2 long `lpad` text |
+| camp-norec3 | 1.8 h | 121,059 | 0 | 2 | 512 | crashes: #11416 (8 array dimensions, fixed after ff97c22); hangs: `generate_series` |
+| camp-tlp | 2.4 h | 73,928 | 2 | 0 | 0 | SQLRight marker text in a row (fixed) |
+| camp-tlp2 | 1.9 h | 71,040 | 0 | 0 | 0 | |
+| camp-tlp3 | 7.6 h | 424,527 | 5 | 0 | 512 | 4 `sum(text)` (comment on #11387), 1 marker text (fixed); hangs: `generate_series` |
+| camp-index | 5.5 h | 135,125 | 118 | 1 | 0 | findings 4, 8, 9 and #11408, #9663; crash #11403 |
+| camp-index2 | 6.5 h | 293,609 | 73 | 6 | 512 | findings 8, 9 and #11408; crashes #11403, #11416 |
