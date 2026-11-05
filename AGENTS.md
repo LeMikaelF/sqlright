@@ -218,6 +218,12 @@ purpose:
   target calls an aggregate and there is no GROUP BY. The C++ looked at
   one target only, so `SELECT c1, count(*)` compared the value of `c1`
   from a row that the plan chooses.
+- The mutation library does not take a statement that holds the result
+  marker text (`BEGIN VERI n`, `END VERI n`), and a seed with such a
+  statement gives no test cases. Saved test cases hold the marker
+  statements, the library kept their string literals, and a mutated
+  SELECT returned `'END VERI 1'` as a value, which ended its result
+  block too early.
 - The output of the harness has a first line with the hash of the input.
   The oracle only compares output that belongs to the test case it sent.
 - The harness prints the result markers (`SELECT 'BEGIN VERI n'`) itself

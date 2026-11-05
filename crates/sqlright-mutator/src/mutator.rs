@@ -305,6 +305,12 @@ impl Mutator {
                 continue;
             }
             current.push(';');
+            // The result markers of a saved test case, and statements that
+            // copied their text. A value with the marker text ends a result
+            // block too early.
+            if holds_marker_text(&current) {
+                continue;
+            }
             let Some(mut q) = parse_query(&current) else {
                 continue;
             };
@@ -978,6 +984,11 @@ impl Mutator {
     pub(crate) fn rel_option_type(t: &IrTree, id: IrId) -> RelOptionType {
         t.option_type(id)
     }
+}
+
+/// True when the text holds a result marker (`BEGIN VERI n`, `END VERI n`).
+pub fn holds_marker_text(text: &str) -> bool {
+    text.contains("BEGIN VERI") || text.contains("END VERI")
 }
 
 /// Parse with a trailing semicolon added, like the C++ helper.

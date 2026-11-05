@@ -20,6 +20,7 @@ use std::path::Path;
 use sqlright_ir::util::{find_string_in, hash_str, is_str_empty};
 use sqlright_ir::IrType;
 use sqlright_mutator::ir_wrapper;
+use sqlright_mutator::mutator::holds_marker_text;
 use sqlright_mutator::oracle::{
     get_random_mutated_select_stmt, remove_oracle_select_stmt_from_ir, remove_select_stmt_from_ir,
     AllCompRes, OraCompRes, Oracle,
@@ -220,6 +221,12 @@ impl Engine {
         let root = q.root;
         remove_oracle_select_stmt_from_ir(self.oracle.as_ref(), &mut q.tree, root);
         remove_select_stmt_from_ir(&mut q.tree, root);
+        // A statement that holds the marker text (from an older library)
+        // can put it into a result row, and the row ends a result block.
+        if holds_marker_text(&q.tree.to_string(root)) {
+            self.stats.total_input_failed += 1;
+            return cases;
+        }
 
         // A seed that drops more than it creates gets a schema to work on.
         let stmts = ir_wrapper::get_stmt_ir_vec(&q.tree, root);
@@ -568,6 +575,16 @@ mod tests {
                 c.marked_runs[0]
             );
         }
+    }
+
+    #[test]
+    fn marker_text_does_not_enter_the_library_or_the_cases() {
+        let mut engine = Engine::new(test_config("TLP"), 1).unwrap();
+        let entry = "SELECT 'BEGIN VERI 0'; \nSELECT 'END VERI 0' AS a1 FROM v0 WHERE c1 > 0; \nSELECT 'END VERI 0'; \nINSERT INTO v0 VALUES ('END VERI 1'); \n";
+        engine.add_queue_entry(entry);
+        assert_eq!(engine.mutator.get_ir_library_2d_hash_kstatement_size(), 0);
+        let seed = "CREATE TABLE v0 (c1 INT, c2 TEXT);\nINSERT INTO v0 VALUES (1, 'END VERI 0');\nSELECT * FROM v0 WHERE c1 = 1;\n";
+        assert!(engine.generate_cases(seed).is_empty());
     }
 
     #[test]
