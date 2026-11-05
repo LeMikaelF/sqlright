@@ -254,7 +254,9 @@ DO UPDATE). Found again on 2026-11-05 (`bug_INDEX_7bdd7c2ec31c66e2`,
 `SET fruit` came from one queue entry. Later forms: `SET level1_no`
 (`bug_INDEX_4cb878e594f11cd4`, `bug_INDEX_cd71494ab578e117`),
 `SET value` (`bug_INDEX_81b8b3f09cc3f7e9`) and `SET a`
-(`bug_INDEX_d2523676375ffab9`).
+(`bug_INDEX_d2523676375ffab9`). Batch of 07:23 UTC:
+`bug_INDEX_7906bb8760a5989e` (`SET b`), `bug_INDEX_86a5ffea1600cff3`
+(`SET a`) and `bug_INDEX_920195ff53002088` (`SET level1_no`).
 
 A flood: from 05:20 to 05:22 UTC the INDEX instance wrote 150 reports
 in 2 minutes. All 150 hold `ON CONFLICT DO UPDATE SET fruit = ...`. They
@@ -557,7 +559,12 @@ Batch of 06:20 UTC (also `regtype[]`, `money[]` and `time[]`):
 `bug_INDEX_ce1f47eea94e7841`, `bug_INDEX_db3b5a00aa1ca909`,
 `bug_INDEX_dd8598a8ff806d69`, `bug_INDEX_eb50c76f8c5d2992`,
 `bug_INDEX_ee95f7a9f92094b2`, `bug_INDEX_f24076df1227cdb6` (`timestamptz`)
-and `bug_INDEX_f5a863c31d917ecc`.
+and `bug_INDEX_f5a863c31d917ecc`. Batch of 07:23 UTC:
+`bug_INDEX_1520a498965b5732`, `bug_INDEX_18a8204dfe2e925a`,
+`bug_INDEX_3baf49e8ce5bb04f`, `bug_INDEX_5b820570910445d8`,
+`bug_INDEX_84d1e9ae9f203339`, `bug_INDEX_a8b4bc05efe12c8d`,
+`bug_INDEX_af0e2c2ea71d0b7b`, `bug_INDEX_d3811504e87a81d9`,
+`bug_INDEX_d7f2464fad3d75bf` and `bug_INDEX_ffc19a13c686a9fb`.
 
 ## 17. Crash: a multi-row VALUES list with rows of different lengths
 
@@ -629,7 +636,10 @@ is finding 17 again. Batch of 06:20 UTC: `bug_INDEX_01ab37bf0fd3927f`
 and `bug_INDEX_be4170a2959fde02` (`1 / c`), and
 `bug_INDEX_21eb0c518ab6193f`. The last one has a partial index
 `WHERE v0.c2 / '1 year'` on a `text` column. Every insert then fails
-with `invalid input syntax for type numeric: "1 year"`.
+with `invalid input syntax for type numeric: "1 year"`. Batch of
+07:23 UTC: `bug_INDEX_4141aa86b51de78b` (a partial index
+`WHERE v0.c2 / '::2:ffff:ffff:ffff:ffff/128'`) and
+`bug_INDEX_964bc9968458d23f` (an index on `c1 % '192.168.1.255/6'::text`).
 
 Issue: a variant of https://github.com/tursodatabase/turso/issues/11387.
 Comment:
@@ -678,7 +688,8 @@ Found by: the INDEX oracle, campaign of 2026-11-05
 (`bug_INDEX_b7f64e48f26695ac`). Later: `bug_INDEX_1704168220bbe1f5`
 (`oid = 70`), and `WHERE oid LIKE '"%"'` in `bug_INDEX_97d76fc4b07760f5`,
 `bug_INDEX_9bf29920b7cb4c9f`, `bug_INDEX_9dae627b38f5a1f3` and
-`bug_INDEX_c3b093f37a41c17f`.
+`bug_INDEX_c3b093f37a41c17f`. Later: `bug_INDEX_942f1a02d8543551`
+(`WHERE oid = 'cr_owner'`).
 
 Issue: a variant of https://github.com/tursodatabase/turso/issues/9663
 (the same problem with `rowid`). Comment:
@@ -796,3 +807,17 @@ mutation library is the same set.
 The INDEX oracle ran once for two hours with the first harness build. The
 NoREC and TLP rounds after the first used the harness that prints the
 result markers itself and the seeds without transaction statements.
+
+### Campaign of 2026-11-05 (12 hours, in progress)
+
+Three instances (NoREC, TLP, INDEX) on tursopg at submodule commit ff97c22.
+The final numbers go here when the campaign ends. SQLRight found three
+false-positive classes in the first 5 hours. Each one is fixed at its
+source and has a unit test. The running instances use the old library, so
+they can still write these reports.
+
+| Class | Oracle | Reports | Fix |
+|---|---|---|---|
+| a query holds the literal `'BEGIN VERI 1'`, and the error message repeats it | NoREC | 1 | the result extraction takes a marker only as a whole line |
+| a statement hits the 2-second limit of the harness in one run only | INDEX | 1 | a Fail with `ERROR:  interrupt` in the output becomes Error |
+| `max(a, b)` with two arguments taken for an aggregate | INDEX | 6 | `ir_wrapper::is_scalar_min_max` (also used by TLP) |

@@ -158,6 +158,9 @@ impl Tlp {
                 continue;
             };
             let name = t.str_val(iden);
+            if ir_wrapper::is_scalar_min_max(t, func_name, name) {
+                continue;
+            }
             let aggr = if find_string_in(name, "count") {
                 Some(TlpType::AggrCount)
             } else if find_string_in(name, "sum") {
@@ -216,11 +219,14 @@ impl Tlp {
     fn has_aggregate_call(t: &IrTree, stmt: IrId) -> bool {
         ir_wrapper::get_ir_node_in_stmt_with_type(t, stmt, IrType::FuncName, false)
             .iter()
-            .filter_map(|&func_name| t.left(func_name))
-            .any(|iden| {
+            .any(|&func_name| {
+                let Some(iden) = t.left(func_name) else {
+                    return false;
+                };
                 let name = t.str_val(iden).to_ascii_lowercase();
                 let name = name.rsplit('.').next().unwrap_or(&name).trim();
                 AGGREGATE_NAMES.contains(&name)
+                    && !ir_wrapper::is_scalar_min_max(t, func_name, name)
             })
     }
 
@@ -820,6 +826,22 @@ mod tests {
                 sqlright_mutator::ir_wrapper::get_first_stmt_from_root(&q.tree, q.root).unwrap();
             assert!(tlp.is_oracle_select_stmt(&mut q.tree, stmt), "{sql}");
         }
+    }
+
+    #[test]
+    fn a_scalar_min_or_max_is_not_an_aggregate() {
+        let tlp_type = |sql: &str| {
+            let q = parse_query(sql).unwrap();
+            let stmt = ir_wrapper::get_first_stmt_from_root(&q.tree, q.root).unwrap();
+            (
+                Tlp::get_stmt_tlp_type(&q.tree, stmt),
+                Tlp::has_aggregate_call(&q.tree, stmt),
+            )
+        };
+        // One argument: the aggregate. Two or more: the scalar function.
+        assert_eq!(tlp_type("SELECT max(c) FROM t WHERE c;"), (TlpType::AggrMax, true));
+        assert_eq!(tlp_type("SELECT max(c, 80) FROM t WHERE c;"), (TlpType::Normal, false));
+        assert_eq!(tlp_type("SELECT min(c, 1, 2) FROM t WHERE c;"), (TlpType::Normal, false));
     }
 
     #[test]

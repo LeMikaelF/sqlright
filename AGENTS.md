@@ -219,6 +219,11 @@ purpose:
   when it is a whole line. The C++ searched the text. A tursopg error
   message repeats the failed query, and a query that holds the literal
   `'BEGIN VERI 1'` made the result blocks of two pairs run into each other.
+- `min(a, b)` and `max(a, b)` with two or more arguments are scalar
+  functions in tursopg (as in SQLite). The INDEX and TLP oracles do not take
+  them for aggregates. The C++ took them for aggregates, compared only the
+  first row, and reported a difference of the row order. The INDEX oracle
+  also matches the function name exactly now (`summary` is not `sum`).
 - A verdict of Fail becomes Error when the output has the line
   `ERROR:  interrupt`. That is a statement that hit the 2-second limit of
   the harness. It stops at a point that depends on timing, so the INDEX
