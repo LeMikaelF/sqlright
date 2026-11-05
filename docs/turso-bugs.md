@@ -248,6 +248,15 @@ the literal when it makes the index.
 Found by: the INDEX oracle, 12-hour campaign (one of three reports with
 the index rows `1.2` and `1.25`).
 
+Issue: https://github.com/tursodatabase/turso/issues/11396.
+
+Two more forms (second 12-hour campaign, INDEX, comment on #11396): an
+expression index `((c / 'x'))` on an `integer` column, and a partial
+index `WHERE 'plot'::jsonb -> 1`. On an empty table both are accepted,
+and then every insert fails (`invalid input syntax for type numeric: "x"`,
+`malformed JSON`). On a table with a row, the jsonb index fails at once.
+About 20 INDEX reports of that campaign had this cause.
+
 ## 10. A very large numeric scale makes an insert run for minutes
 
 tursopg accepts any precision and scale in `NUMERIC(p, s)`. An insert
