@@ -20,6 +20,8 @@ panics in `op_string8` (`index out of bounds: the len is 9 but the index is 9`).
 NOREC crashes 000001 (src 002305) and 000004 (src 002636) are the same panic.
 camp-index2 crash 000000 (src 001852) is the same problem, with the panic in `op_integer`
 (`execute.rs:5910`), only in the run without indexes.
+camp-index2 crash 000001 (src 001876) is the same problem, with the panic in `op_real`
+(`execute.rs:6227`).
 
 ## 1. Crash: extension aggregate in a GROUP BY query
 
@@ -118,7 +120,9 @@ A `jsonb` primary key does the same: after `INSERT INTO t VALUES (1), (2), (6)`,
 `WHERE c = 6` counts 1 row and `WHERE NOT (c = 6)` counts 3 rows, so
 `sum(c)` over the TLP partitions is 15 instead of 9 (round 12h-b, TLP). The text
 `'1.2345678901234e-200'` in an indexed `timestamptz` column does the same (two
-TLP reports of camp-tlp2, 2026-11-05). With a
+TLP reports of camp-tlp2, 2026-11-05). A `TIMESTAMP` primary key with
+`INSERT ... VALUES (2, ...)` does the same (the first NoREC report of that
+campaign, `bug_NOREC_64871ceb9d417f2f`). With a
 valid date (`INSERT INTO v0 VALUES ('2024-01-02')`) both forms agree.
 PostgreSQL rejects the insert (`column "c1" is of type date but expression
 is of type integer`), so the first problem is the accepted insert; given
@@ -542,6 +546,13 @@ Issue: https://github.com/tursodatabase/turso/issues/11417
   `quote_literal` asks for 2 bytes per character (1,408,656,110 bytes) and
   the process aborts under the 4 GB limit. PostgreSQL asks for the same
   size and refuses it, because one allocation is limited to 1 GB.
+
+- A window function without ORDER BY in its OVER clause, for example
+  `avg(c8) OVER (ROWS BETWEEN 1 FOLLOWING AND 1 FOLLOWING)`, gives values
+  that depend on the row order. An index on `c8` changes the scan order,
+  so the INDEX oracle saw a difference (`bug_INDEX_cce4e92ce76bb8a2`,
+  camp-index2). Both results are correct. This is the first report of
+  this kind, so the oracle is not changed yet.
 
 ## Campaign log
 
