@@ -17,7 +17,7 @@
 use std::collections::VecDeque;
 use std::sync::OnceLock;
 
-use sqlright_ir::{IrId, IrTree, IrType, Op};
+use sqlright_ir::{DataType, IrId, IrTree, IrType, Op};
 
 /// The name of a type without the `_N` suffix the grammar translator adds
 /// to the parts of one rule: `kSimpleSelect_13` and `kSimpleSelect` compare
@@ -554,6 +554,31 @@ pub fn defined_schema_name(t: &IrTree, node: IrId) -> Option<String> {
     }
     let iden = t.left(node).filter(|&l| t.ty(l) == IrType::Identifier)?;
     Some(t.str_val(iden).to_ascii_lowercase())
+}
+
+/// The name that `node` defines when it is the `CREATE DOMAIN` or `CREATE
+/// TYPE` part of a statement, in lower case.
+pub fn defined_type_name(t: &IrTree, node: IrId) -> Option<String> {
+    let defines_a_type = match t.ty(node) {
+        IrType::CreateDomainStmt_1 => true,
+        IrType::DefineStmt => t.prefix(node) == "CREATE TYPE",
+        _ => false,
+    };
+    if !defines_a_type {
+        return None;
+    }
+    let any_name = t.left(node).filter(|&l| t.ty(l) == IrType::AnyName)?;
+    let iden = t.left(any_name)?;
+    Some(t.str_val(iden).to_ascii_lowercase())
+}
+
+/// The name of a column type that is not a keyword (`text`, `int4`, a
+/// domain), in lower case. Keyword types (`INT`, `VARCHAR`) have none.
+pub fn generic_type_name(t: &IrTree, typename: IrId) -> Option<String> {
+    preorder(t, typename)
+        .into_iter()
+        .find(|&id| t.ty(id) == IrType::Identifier && t.data_type(id) == DataType::GenericType)
+        .map(|id| t.str_val(id).to_ascii_lowercase())
 }
 
 #[cfg(test)]

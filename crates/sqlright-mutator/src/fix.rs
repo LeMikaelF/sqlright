@@ -53,6 +53,9 @@ pub struct FixContext {
     /// tursopg gives their columns no type, so the types of the source
     /// columns are not the types of these columns.
     pub v_table_without_column_types: Vec<String>,
+    /// The domains and types that the test case defines (`CREATE DOMAIN`,
+    /// `CREATE TYPE`), in lower case.
+    pub v_created_type_names: Vec<String>,
     /// The schemas that the test case creates (`CREATE SCHEMA`), in lower
     /// case.
     pub v_created_schema_names: Vec<String>,
@@ -159,6 +162,9 @@ impl Mutator {
         for id in ir_wrapper::preorder(t, stmt) {
             if let Some(name) = ir_wrapper::defined_schema_name(t, id) {
                 self.ctx.v_created_schema_names.push(name);
+            }
+            if let Some(name) = ir_wrapper::defined_type_name(t, id) {
+                self.ctx.v_created_type_names.push(name);
             }
         }
 
@@ -461,7 +467,14 @@ impl Mutator {
                         .push(new_name.clone());
                     if flag == DataFlag::Define {
                         let typename = match t.parent(id).and_then(|p| t.right(p)) {
-                            Some(r) if t.ty(r) == IrType::Typename => Some(r),
+                            Some(r) if t.ty(r) == IrType::Typename => {
+                                let accepted = self.accepted_column_type(t, stmt, r);
+                                if accepted != r {
+                                    fixed.extend(ir_wrapper::preorder(t, r));
+                                    to_drop.push(r);
+                                }
+                                Some(accepted)
+                            }
                             _ => None,
                         };
                         let col_type =
@@ -1121,6 +1134,49 @@ impl Mutator {
         true
     }
 
+    /// The column type `typename` when tursopg accepts it. Otherwise a copy
+    /// of an accepted column type of the seeds takes its place in the tree,
+    /// and the copy is returned. Without seeds, every type is kept.
+    fn accepted_column_type(&mut self, t: &mut IrTree, stmt: IrId, typename: IrId) -> IrId {
+        if self.v_seed_column_types.is_empty() || self.is_accepted_column_type(t, typename) {
+            return typename;
+        }
+        let candidates: Vec<usize> = (0..self.v_seed_column_types.len())
+            .filter(|&i| {
+                let seed_type = &self.v_seed_column_types[i];
+                let root = seed_type.root.expect("root");
+                ir_wrapper::generic_type_name(seed_type, root)
+                    .is_none_or(|name| !self.seed_defined_type_names.contains(&name))
+            })
+            .collect();
+        if candidates.is_empty() {
+            return typename;
+        }
+        let pick = candidates[self.rng.rand_int(candidates.len())];
+        let seed_type = &self.v_seed_column_types[pick];
+        let copy = t.import(seed_type, seed_type.root.expect("root"));
+        if !t.swap_node(stmt, typename, Some(copy)) {
+            t.deep_drop(copy);
+            return typename;
+        }
+        copy
+    }
+
+    /// True when tursopg accepts `typename` as a column type: the test case
+    /// defines it, or a seed uses it in a column definition and does not
+    /// define it with `CREATE DOMAIN` or `CREATE TYPE`.
+    fn is_accepted_column_type(&self, t: &IrTree, typename: IrId) -> bool {
+        if let Some(name) = ir_wrapper::generic_type_name(t, typename) {
+            if self.ctx.v_created_type_names.contains(&name) {
+                return true;
+            }
+            if self.seed_defined_type_names.contains(&name) {
+                return false;
+            }
+        }
+        self.seed_column_type_texts.contains(&t.to_string(typename))
+    }
+
     /// Define, remove, or use a name from a plain list (sequences, constraints).
     /// Definitions keep the original name, like the C++.
     fn fix_simple_name(
@@ -1475,6 +1531,64 @@ mod tests {
             m.validate(tree, r);
         }
         assert_eq!(m.ctx.v_table_names, vec!["v0".to_string()]);
+    }
+
+    /// The statements of `sql` after the instantiation step, with the seed
+    /// lines `seeds` in the library.
+    fn fixed_with_seeds(seed: u64, seeds: &[&str], sql: &str) -> Vec<String> {
+        let oracle = AnySelect;
+        let mut m = Mutator::new(seed);
+        for line in seeds {
+            assert!(m.init_from_line(&oracle, line), "{line}");
+        }
+        let mut q = parse_query(sql).unwrap();
+        m.pre_validate();
+        let (mut trees, _types) = m.pre_fix_transform(&oracle, &mut q.tree, q.root);
+        for tree in trees.iter_mut() {
+            let r = tree.root.unwrap();
+            m.validate(tree, r);
+        }
+        trees.iter().map(|t| t.to_string(t.root.unwrap())).collect()
+    }
+
+    #[test]
+    fn a_column_type_that_tursopg_rejects_is_replaced_by_a_seed_type() {
+        let seeds = [
+            "CREATE DOMAIN d1 AS int;",
+            "CREATE TABLE s (a d1, b text, c INT);",
+        ];
+        for seed in 0..50 {
+            let out =
+                fixed_with_seeds(seed, &seeds, "CREATE TABLE t (a d1, b nosuchtype, c text);");
+            let types: Vec<&str> = out[0]
+                .trim_start_matches("CREATE TABLE v0 ( ")
+                .trim_end_matches(" )")
+                .split(", ")
+                .map(|col| col.split_once(' ').unwrap().1)
+                .collect();
+            assert_eq!(types.len(), 3, "seed {seed}: {}", out[0]);
+            for ty in &types[..2] {
+                assert!(["text", "INT"].contains(ty), "seed {seed}: {}", out[0]);
+            }
+            assert_eq!(types[2], "text", "seed {seed}: {}", out[0]);
+        }
+    }
+
+    #[test]
+    fn a_domain_of_the_test_case_is_kept_as_a_column_type() {
+        let seeds = ["CREATE DOMAIN d1 AS int;", "CREATE TABLE s (a d1, b text);"];
+        for seed in 0..20 {
+            let out = fixed_with_seeds(
+                seed,
+                &seeds,
+                "CREATE DOMAIN d1 AS int; CREATE TABLE t (a d1, b d1 [ ]);",
+            );
+            assert!(
+                out[1].ends_with("( c1 d1, c2 d1 [ ] )"),
+                "seed {seed}: {}",
+                out[1]
+            );
+        }
     }
 
     #[test]

@@ -89,6 +89,16 @@ pub struct Mutator {
     pub v_aggregate_func: Vec<String>,
     pub v_sys_column_name: Vec<String>,
     pub v_sys_catalogs_name: Vec<String>,
+    /// The column types of the column definitions in the seed files, one
+    /// tree for each text. The seeds hold only statements that tursopg
+    /// runs, so tursopg accepts these types.
+    pub v_seed_column_types: Vec<IrTree>,
+    /// The text of each tree in `v_seed_column_types`.
+    pub seed_column_type_texts: HashSet<String>,
+    /// The names that a seed file defines with `CREATE DOMAIN` or `CREATE
+    /// TYPE`. A column of such a type works only in a test case that
+    /// defines the type too.
+    pub seed_defined_type_names: HashSet<String>,
 
     /// The names and literals seen in the current test case.
     pub ctx: FixContext,
@@ -119,6 +129,9 @@ impl Mutator {
             v_aggregate_func: Vec::new(),
             v_sys_column_name: Vec::new(),
             v_sys_catalogs_name: Vec::new(),
+            v_seed_column_types: Vec::new(),
+            seed_column_type_texts: HashSet::new(),
+            seed_defined_type_names: HashSet::new(),
             ctx: FixContext::default(),
             id_counter: 0,
         };
@@ -252,10 +265,7 @@ impl Mutator {
         // The C++ list was `oid`, `tableoid`, `xmin`, `cmin`, `xmax`, `cmax`
         // and `ctid`. tursopg has only `oid`, and each other name makes the
         // statement fail with `no such column`.
-        self.v_sys_column_name = ["oid"]
-            .iter()
-            .map(|s| s.to_string())
-            .collect();
+        self.v_sys_column_name = ["oid"].iter().map(|s| s.to_string()).collect();
         self.v_sys_catalogs_name = SYS_CATALOG_NAMES.iter().map(|s| s.to_string()).collect();
     }
 
@@ -284,6 +294,7 @@ impl Mutator {
         let Some(mut q) = parse_query(line) else {
             return false;
         };
+        self.record_seed_column_types(&q.tree, q.root);
         let strip_sql = self.extract_struct(&mut q.tree, q.root);
         let Some(q2) = parse_query(&strip_sql) else {
             return false;
@@ -291,6 +302,25 @@ impl Mutator {
         let text = q2.tree.to_string(q2.root);
         self.add_all_to_library(oracle, &text);
         true
+    }
+
+    /// Remember the column types and the type definitions of a seed
+    /// statement, before its names become placeholders.
+    fn record_seed_column_types(&mut self, t: &IrTree, root: IrId) {
+        for id in ir_wrapper::preorder(t, root) {
+            if let Some(name) = ir_wrapper::defined_type_name(t, id) {
+                self.seed_defined_type_names.insert(name);
+            }
+            if t.ty(id) != IrType::ColumnDef_1 {
+                continue;
+            }
+            let Some(typename) = t.right(id).filter(|&r| t.ty(r) == IrType::Typename) else {
+                continue;
+            };
+            if self.seed_column_type_texts.insert(t.to_string(typename)) {
+                self.v_seed_column_types.push(t.extract(typename));
+            }
+        }
     }
 
     /// Split a query into statements and add each one to the library. SELECTs

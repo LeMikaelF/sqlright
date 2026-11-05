@@ -328,6 +328,12 @@ purpose:
   creates. Otherwise it uses `public`, or `pg_catalog` when the name after
   it is a system catalog that it keeps. A name with a subscript (`t[1]`)
   keeps the C++ roles, so no table is recorded for it.
+- The instantiation step keeps the type of a column definition only when
+  a seed file uses the same type in a column definition, or when the test
+  case defines it with `CREATE DOMAIN` or `CREATE TYPE`. Otherwise a type
+  from the seeds takes its place. A type that a seed defines counts only
+  in a test case that defines it too. This works because the seeds hold
+  only statements that tursopg runs (`sqlright seeds --harness`).
 
 ## When a campaign reports hundreds of failures
 
@@ -386,11 +392,17 @@ comparison (finding 17).
 - The harness prints NULL as nothing, so a row `(1, NULL, 2)` and a row
   `(1, 2, NULL)` print the same. The row comparison of EET, DQE and
   LATERAL cannot see a NULL that moved to another column.
-- Many oracle SELECTs fail before the oracle can compare them. In a
-  sample of 100 test cases per oracle, 32 % (NoREC), 48 % (TLP) and
-  58 % (INDEX) of the result blocks held an error. One cause is not
-  fixed: a mutation gives a CREATE TABLE a type that does not exist, and
-  each later statement on that table fails.
+- Many oracle SELECTs fail before the oracle can compare them. In 200
+  test cases per oracle, 23 % (NoREC), 50 % (TLP) and 51 % (INDEX) of
+  the result blocks held an error. The test cases came from the last 40
+  queue entries of the 2026-11-05 campaign, with seeds that the fixed
+  harness filtered. Frequent causes are names that the instantiation step
+  cannot fill (a placeholder `x` stays when no table exists), `a column
+  alias list on a table is not supported`, and HAVING in a query without
+  an aggregate.
+- The instantiation step does not know schemas or the search path. After
+  `SET search_path TO s`, an unqualified name does not find the tables of
+  `public`, and the statements that use them fail.
 - AFL++ reports some instability for the harness (the coverage of a run
   changes with hash map iteration order inside turso). AFL++ handles it; it
   only lowers the value of the coverage feedback.
