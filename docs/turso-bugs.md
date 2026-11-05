@@ -448,6 +448,36 @@ Found by: the INDEX oracle, campaign of 2026-11-05 (reports
 
 Issue: not filed. Draft in `work/issues-draft/01-casts-postgres-does-not-have.md`.
 
+## 17. Crash: a multi-row VALUES list with rows of different lengths
+
+tursopg compares only the first row of a multi-row `VALUES` list with
+the column count. A longer row later in the list writes past the
+register file and panics.
+
+```sql
+CREATE TABLE t (a int);
+INSERT INTO t VALUES (1), (1, 2, 3, 4, 5, 6, 7);
+```
+
+```text
+thread 'main' panicked at core/vdbe/execute.rs:5910:5:
+index out of bounds: the len is 7 but the index is 7
+```
+
+With a text value at the end of the row, the panic is in `op_string8`
+(`core/vdbe/execute.rs:6257`). A shorter row takes the missing values
+from the row before it. The SQLite parser rejects such a list
+(`sqlite/parser/src/parser.rs`). The PostgreSQL frontend does not, and
+the `Values` branch of `prepare_select_plan` (`core/translate/select.rs`)
+uses `values[0].len()` without a check.
+
+Expected PostgreSQL behavior: `VALUES lists must all be the same length`.
+
+Found by: the NoREC instance, campaign of 2026-11-05, as an AFL++ crash
+(signal 6).
+
+Issue: https://github.com/tursodatabase/turso/issues/11403 (already open).
+
 ## Campaign log
 
 tursopg at submodule commit ff97c22, 4 cores, one `afl-fuzz` instance per
