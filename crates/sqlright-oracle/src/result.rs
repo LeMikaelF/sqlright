@@ -31,14 +31,16 @@ pub fn split_runs(output: &str) -> Vec<String> {
 }
 
 /// The results between every `begin`/`end` pair, in order. A block with an
-/// error becomes the single word `Error`.
+/// error becomes the single word `Error`. A marker counts only when it is a
+/// line of its own, so a row that holds the text `END VERI 0` does not end
+/// the block.
 pub fn extract_query_result(res: &str, begin_sign: &str, end_sign: &str) -> Vec<String> {
     let mut out = Vec::new();
     if is_str_empty(res) {
         return out;
     }
-    let mut begin_idx = res.find(begin_sign);
-    let mut end_idx = res.find(end_sign);
+    let mut begin_idx = find_marker_line(res, begin_sign, 0);
+    let mut end_idx = find_marker_line(res, end_sign, 0);
     while let Some(b) = begin_idx {
         let Some(e) = end_idx else {
             break;
@@ -49,12 +51,8 @@ pub fn extract_query_result(res: &str, begin_sign: &str, end_sign: &str) -> Vec<
         } else {
             ""
         };
-        begin_idx = res[content_start..]
-            .find(begin_sign)
-            .map(|p| p + content_start);
-        end_idx = res[e + end_sign.len()..]
-            .find(end_sign)
-            .map(|p| p + e + end_sign.len());
+        begin_idx = find_marker_line(res, begin_sign, content_start);
+        end_idx = find_marker_line(res, end_sign, e + end_sign.len());
         if cur.contains("Error") || cur.contains("ERROR") {
             out.push("Error".to_string());
         } else {
@@ -62,6 +60,22 @@ pub fn extract_query_result(res: &str, begin_sign: &str, end_sign: &str) -> Vec<
         }
     }
     out
+}
+
+/// The position of the first `sign` at or after `from` that starts a line and
+/// has only spaces after it on that line.
+fn find_marker_line(res: &str, sign: &str, from: usize) -> Option<usize> {
+    let mut start = from;
+    while let Some(p) = res[start..].find(sign).map(|p| p + start) {
+        let at_line_start = p == 0 || res.as_bytes()[p - 1] == b'\n';
+        let rest = &res[p + sign.len()..];
+        let line_rest = rest.split('\n').next().unwrap_or("");
+        if at_line_start && line_rest.trim().is_empty() {
+            return Some(p);
+        }
+        start = p + sign.len();
+    }
+    None
 }
 
 /// Compare the forms of every oracle SELECT inside one run.
@@ -214,6 +228,15 @@ mod tests {
         assert_eq!(
             extract_query_result(out, "BEGIN VERI 1", "END VERI 1"),
             vec!["\n3 \n"]
+        );
+    }
+
+    #[test]
+    fn ignores_a_marker_inside_a_row() {
+        let out = "BEGIN VERI 0 \n2 9 END VERI 0 \nEND VERI 0 \nBEGIN VERI 0 \n1 \nEND VERI 0 \n";
+        assert_eq!(
+            extract_query_result(out, "BEGIN VERI 0", "END VERI 0"),
+            vec!["\n2 9 END VERI 0 \n", "\n1 \n"]
         );
     }
 

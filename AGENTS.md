@@ -215,6 +215,13 @@ purpose:
   out BEGIN, COMMIT, ROLLBACK and SAVEPOINT statements by default.
 - The harness prints `ERROR:  <message>` for a failed statement, like the
   C++ PostgreSQL client did, so the result extraction is unchanged.
+- The result extraction takes a `BEGIN VERI n` or `END VERI n` marker
+  only when it is a line of its own. The C++ searched for the text
+  anywhere, so a row that held the string `END VERI 0` ended the block.
+- The NoREC rewrite finds the ORDER BY, WHERE and FROM places of its
+  template before it copies parts of the original query into it. A
+  subquery in the copied WHERE clause has its own FROM clause, and the
+  rewrite replaced that one instead of the template FROM.
 
 ## When a campaign reports hundreds of failures
 
