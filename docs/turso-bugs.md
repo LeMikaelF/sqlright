@@ -306,6 +306,8 @@ Found by: the INDEX instance of the 12-hour campaign, as an AFL++ hang
 camp-tlp3 hang 000000 (src 009934) is the same: after `CREATE TABLE v0 (c1
 NUMERIC(217000279, 217000279) PRIMARY KEY, ...)`, one insert does not stop
 in 60 seconds. Without the scale, the file takes 0.05 seconds.
+camp-tlp3 hangs 000001 and 000002 (src 011967) are the same, with
+`NUMERIC ( 1234690362, 1234690362 )`.
 
 Issue: https://github.com/tursodatabase/turso/issues/11397
 
