@@ -538,6 +538,26 @@ AFL++ hang (`c9 = lpad('nan', '910408173')` in three partitions).
 
 Issue: https://github.com/tursodatabase/turso/issues/11417
 
+## 19. Crash: a column type or cast with more than 7 array dimensions
+
+```sql
+CREATE TABLE v0 (c1 INT, c2 INT[][][][][][][1200][3]);
+SELECT NULL::int[][][][][][][][];
+```
+
+```text
+thread 'main' panicked at core/schema.rs:10746:13:
+array dimensions must be <= 7
+```
+
+`map_pg_type` (`postgres/parser/translator.rs`) counts the `[]` suffixes
+without the `MAX_ARRAY_DIMENSIONS` check that the SQLite parser makes.
+Then `set_array_dimensions` fails its assertion.
+
+Issue: https://github.com/tursodatabase/turso/issues/11416 (closed on
+2026-11-05 by https://github.com/tursodatabase/turso/pull/11423, after
+ff97c22). camp-tlp3 crash 000001 (src 004577) found it again.
+
 ## Not turso bugs: harness and oracle limits
 
 - A statement that returns several gigabytes, for example
