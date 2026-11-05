@@ -43,6 +43,55 @@ const TEMPLATES: &[&str] = &[
     "SELECT AVG(x) FROM x WHERE x=0;",
 ];
 
+/// Aggregate functions of PostgreSQL and of the turso extensions.
+const AGGREGATE_NAMES: &[&str] = &[
+    "count",
+    "sum",
+    "min",
+    "max",
+    "avg",
+    "total",
+    "group_concat",
+    "string_agg",
+    "array_agg",
+    "json_agg",
+    "jsonb_agg",
+    "json_object_agg",
+    "jsonb_object_agg",
+    "json_group_array",
+    "json_group_object",
+    "bool_and",
+    "bool_or",
+    "every",
+    "bit_and",
+    "bit_or",
+    "bit_xor",
+    "stddev",
+    "stddev_pop",
+    "stddev_samp",
+    "variance",
+    "var_pop",
+    "var_samp",
+    "median",
+    "mode",
+    "percentile",
+    "percentile_cont",
+    "percentile_disc",
+    "corr",
+    "covar_pop",
+    "covar_samp",
+    "regr_avgx",
+    "regr_avgy",
+    "regr_count",
+    "regr_intercept",
+    "regr_r2",
+    "regr_slope",
+    "regr_sxx",
+    "regr_sxy",
+    "regr_syy",
+    "xmlagg",
+];
+
 const OUTER_MIN: &str = "SELECT MIN(aggr) FROM (SELECT *) AS subb;";
 const OUTER_MAX: &str = "SELECT MAX(aggr) FROM (SELECT *) AS subb;";
 const OUTER_SUM: &str = "SELECT SUM(aggr) FROM (SELECT *) AS subb;";
@@ -145,6 +194,18 @@ impl Tlp {
         ir_wrapper::get_ir_node_in_stmt_with_type(t, stmt, IrType::GroupByItem, false)
             .iter()
             .any(|&item| squeeze(&t.to_string(item)) == target_text)
+    }
+
+    /// True when the statement (not its subqueries) calls an aggregate function.
+    fn has_aggregate_call(t: &IrTree, stmt: IrId) -> bool {
+        ir_wrapper::get_ir_node_in_stmt_with_type(t, stmt, IrType::FuncName, false)
+            .iter()
+            .filter_map(|&func_name| t.left(func_name))
+            .any(|iden| {
+                let name = t.str_val(iden).to_ascii_lowercase();
+                let name = name.rsplit('.').next().unwrap_or(&name).trim();
+                AGGREGATE_NAMES.contains(&name)
+            })
     }
 
     /// The TLP type of every oracle SELECT in a marked test case.
@@ -518,7 +579,17 @@ impl Oracle for Tlp {
         {
             return false;
         }
-        if Self::get_stmt_tlp_type(t, stmt) == TlpType::GroupBy && !Self::target_is_grouped(t, stmt)
+        let tlp_type = Self::get_stmt_tlp_type(t, stmt);
+        if tlp_type == TlpType::GroupBy && !Self::target_is_grouped(t, stmt) {
+            return false;
+        }
+        // An aggregate inside an expression (`CASE WHEN count(*) = 1 ...`)
+        // makes the whole table one group. The query returns one row, and
+        // the partitioned form returns one row per partition.
+        if matches!(
+            tlp_type,
+            TlpType::Normal | TlpType::Distinct | TlpType::Having
+        ) && Self::has_aggregate_call(t, stmt)
         {
             return false;
         }
@@ -699,6 +770,29 @@ mod tests {
             sqlright_pg_parser::parse_query("SELECT avg(c1) FROM v0 WHERE c1 > 0;").unwrap();
         let stmt = sqlright_mutator::ir_wrapper::get_first_stmt_from_root(&q.tree, q.root).unwrap();
         assert!(tlp.is_oracle_select_stmt(&mut q.tree, stmt));
+    }
+
+    #[test]
+    fn rejects_an_aggregate_inside_an_expression() {
+        let tlp = Tlp;
+        for sql in [
+            "SELECT CASE WHEN count(*) = count(DISTINCT c1) THEN 1 ELSE 0 END FROM v0 WHERE c1 > 0;",
+            "SELECT DISTINCT sum(c1) + 1 FROM v0 WHERE c1 > 0;",
+        ] {
+            let mut q = sqlright_pg_parser::parse_query(sql).unwrap();
+            let stmt =
+                sqlright_mutator::ir_wrapper::get_first_stmt_from_root(&q.tree, q.root).unwrap();
+            assert!(!tlp.is_oracle_select_stmt(&mut q.tree, stmt), "{sql}");
+        }
+        for sql in [
+            "SELECT c1 + 1 FROM v0 WHERE c1 > 0;",
+            "SELECT c1 FROM v0 WHERE c1 > (SELECT max(c2) FROM v0);",
+        ] {
+            let mut q = sqlright_pg_parser::parse_query(sql).unwrap();
+            let stmt =
+                sqlright_mutator::ir_wrapper::get_first_stmt_from_root(&q.tree, q.root).unwrap();
+            assert!(tlp.is_oracle_select_stmt(&mut q.tree, stmt), "{sql}");
+        }
     }
 
     #[test]
