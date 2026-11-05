@@ -105,7 +105,10 @@ same happens with a `time` column: `INSERT INTO v0 VALUES (0)` stores
 row (12-hour campaign, round 12h-b, NoREC). A `timestamptz` column
 with an index does the same: `INSERT INTO t VALUES (2)` stores
 `-4713-11-26 12:00:00`, `c = '2'` is false as an expression, and
-`WHERE c = '2'` finds the row only through the index (round 12h-b, INDEX). With a
+`WHERE c = '2'` finds the row only through the index (round 12h-b, INDEX).
+A `jsonb` primary key does the same: after `INSERT INTO t VALUES (1), (2), (6)`,
+`WHERE c = 6` counts 1 row and `WHERE NOT (c = 6)` counts 3 rows, so
+`sum(c)` over the TLP partitions is 15 instead of 9 (round 12h-b, TLP). With a
 valid date (`INSERT INTO v0 VALUES ('2024-01-02')`) both forms agree.
 PostgreSQL rejects the insert (`column "c1" is of type date but expression
 is of type integer`), so the first problem is the accepted insert; given
