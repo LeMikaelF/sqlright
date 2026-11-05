@@ -297,6 +297,48 @@ Given the accepted query, the two plans must still agree.
 Found by: the TLP oracle, 12-hour campaign, round 12h-b
 (`SELECT * FROM v0 HAVING sum(c2) > v0.c2 * 'c'` against its partition on `oid = 1`).
 
+## 12. Crash: make_date with a very large day number
+
+`make_date` and `make_timestamp` panic when the day number moves the
+date past the range of the `chrono` date type.
+
+```sql
+SELECT make_date(1, 4, 1453556443);
+```
+
+```text
+thread 'main' panicked at chrono-0.4.42/src/naive/datetime/mod.rs:1635:38:
+`NaiveDateTime + TimeDelta` overflowed
+```
+
+The panic comes from `dt += d` in `Time::time_date`
+(`core/time/internal.rs:249`), called from `time_date_internal`
+(`core/time/mod.rs:194`). The code makes sure that the day count fits
+in a `chrono::Duration` (`try_days`), but it does not use a checked
+addition. A day number of 3,000,000 does not panic.
+`SELECT make_timestamp(2024, 1, 1453556443, 0, 0, 0)` panics the same way.
+
+Expected PostgreSQL behavior: the error
+`date field value out of range: 1-04-1453556443`.
+
+Found by: the INDEX instance of the 12-hour campaign, round 12h-b, as
+an AFL++ crash (`SELECT make_date(TRUE, 4, 1453556443) FROM (VALUES ...)`).
+
+## 13. make_date returns a blob
+
+In PostgreSQL, `make_date(2024, 1, 1)` returns the date `2024-01-01`.
+In tursopg, the name resolves to the function of the turso time
+extension, which returns its own binary time value.
+
+```sql
+SELECT make_date(2024, 1, 1);           -- tursopg: 13 bytes of binary data   PostgreSQL: 2024-01-01
+SELECT typeof(make_date(2024, 1, 1));   -- tursopg: blob
+```
+
+Expected PostgreSQL behavior: a value of type `date`.
+
+Found by: the reduction of finding 12.
+
 ## Campaign log
 
 tursopg at submodule commit ff97c22, 4 cores, one `afl-fuzz` instance per
