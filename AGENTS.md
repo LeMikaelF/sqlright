@@ -209,6 +209,15 @@ The harness filter in `seeds` matters: most statements of the PostgreSQL
 regression tests use features tursopg rejects. A test case whose schema
 statements fail gives the oracle only errors.
 
+The harness reads one variable: `SQLRIGHT_STMT_TIMEOUT_MS`, the time limit
+of one statement in milliseconds (default 2000). A slow statement takes the
+whole limit in each run of a multi-run test case. In a campaign, the INDEX
+and TLP instances fell to less than one test case each second, and a limit
+of 250 ms brought them back to about 50. A few statements run past any
+limit, because they are one long instruction (`repeat`, `lpad` or `LIKE` on
+a very long text, a conversion of a long text to a number). AFL++ saves
+such a test case as a hang.
+
 ## Regenerate the parser
 
 ```bash
