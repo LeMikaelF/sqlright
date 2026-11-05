@@ -9,9 +9,10 @@ printf '<sql>' > repro.sql
 crates/sqlright-harness-tursopg/target/release/sqlright-harness-tursopg --replay repro.sql
 ```
 
-SQLRight does not fix turso bugs. Issues were opened on 2026-11-04 for the
-findings that no existing issue covered: #11385 (finding 1), #11386
-(finding 4), #11387 (findings 2, 3 and 5 together) and #11388 (finding 6).
+SQLRight does not fix turso bugs. Each finding links to the turso issue
+that covers it. The issues were opened on 2026-11-04 and 2026-11-05 for
+the findings that no existing issue covered. Findings 11 and 13 were
+already known.
 
 ## 1. Crash: extension aggregate in a GROUP BY query
 
@@ -198,7 +199,9 @@ This is not finding 1. Finding 1 is a slice index panic in
 Found by: the NoREC oracle, 12-hour campaign. AFL++ saved it as a crash
 after 88 seconds (`SELECT count(*) FROM v0 WHERE c1 @> percentile_cont(c2, c1)`).
 
-## 8. ON CONFLICT DO UPDATE SET is not checked on a table without an index
+Issue: https://github.com/tursodatabase/turso/issues/11395
+
+## 8. A non-unique index changes whether ON CONFLICT DO UPDATE succeeds
 
 An unknown column in the SET list of `ON CONFLICT DO UPDATE` gives an
 error only when the table has an index. On a table without an index,
@@ -215,8 +218,13 @@ INSERT INTO u VALUES (6, 7) ON CONFLICT DO UPDATE SET nosuch = u.a;   -- tursopg
 SELECT count(*) FROM u;                                               -- tursopg: 0
 ```
 
-A table with a primary key gives the error too. tursopg also accepts
-`ON CONFLICT DO UPDATE` without a conflict target.
+A non-unique index cannot cause a conflict, so the DO UPDATE branch
+can never run. SQLite does not compile the branch in that case and
+inserts the row. With a unique index or a primary key, the branch can
+run, and the error is correct. turso compiles the branch when the table
+has an index of any kind (`resolve_upserts` and
+`build_constraints_to_check` in `core/translate/insert.rs`). tursopg
+also accepts `ON CONFLICT DO UPDATE` without a conflict target.
 
 Expected PostgreSQL behavior: both inserts fail. Without a conflict
 target, the error is `ON CONFLICT DO UPDATE requires inference
@@ -225,6 +233,8 @@ gives `column "nosuch" of relation "t" does not exist`.
 
 Found by: the INDEX oracle, 12-hour campaign (the row counts of the run
 with indexes and the run without indexes were different).
+
+Issue: https://github.com/tursodatabase/turso/issues/11407
 
 ## 9. A partial index with an invalid literal makes every insert fail
 
@@ -248,6 +258,8 @@ the literal when it makes the index.
 Found by: the INDEX oracle, 12-hour campaign (one of three reports with
 the index rows `1.2` and `1.25`).
 
+Issue: https://github.com/tursodatabase/turso/issues/11396
+
 ## 10. A very large numeric scale makes an insert run for minutes
 
 tursopg accepts any precision and scale in `NUMERIC(p, s)`. An insert
@@ -268,6 +280,8 @@ Expected PostgreSQL behavior: `CREATE TABLE` fails with
 
 Found by: the INDEX instance of the 12-hour campaign, as an AFL++ hang
 (`default/hangs/`).
+
+Issue: https://github.com/tursodatabase/turso/issues/11397
 
 ## 11. A bare column in a HAVING query without GROUP BY is NULL after a table scan
 
@@ -301,6 +315,10 @@ rejects the first query with `HAVING clause on a non-aggregate query`.
 Found by: the TLP oracle, 12-hour campaign, round 12h-b
 (`SELECT * FROM v0 HAVING sum(c2) > v0.c2 * 'c'` against its partition on `oid = 1`).
 
+Issue: https://github.com/tursodatabase/turso/issues/10209 (opened on
+2026-10-20, before this campaign) reports the NULL value. No new issue
+was opened.
+
 ## 12. Crash: make_date with a very large day number
 
 `make_date` and `make_timestamp` panic when the day number moves the
@@ -328,6 +346,9 @@ Expected PostgreSQL behavior: the error
 Found by: the INDEX instance of the 12-hour campaign, round 12h-b, as
 an AFL++ crash (`SELECT make_date(TRUE, 4, 1453556443) FROM (VALUES ...)`).
 
+Issue: https://github.com/tursodatabase/turso/issues/11398 (#11400 was
+opened by mistake for the same crash and closed as a duplicate).
+
 ## 13. make_date returns a blob
 
 In PostgreSQL, `make_date(2024, 1, 1)` returns the date `2024-01-01`.
@@ -342,6 +363,10 @@ SELECT typeof(make_date(2024, 1, 1));   -- tursopg: blob
 Expected PostgreSQL behavior: a value of type `date`.
 
 Found by: the reduction of finding 12.
+
+Issue: https://github.com/tursodatabase/turso/issues/9609 (opened on
+2026-10-07, before this campaign) reports the blob. No new issue was
+opened.
 
 ## 14. Crash: stack overflow on a nested CTE with the same name
 
@@ -373,6 +398,8 @@ can have the same crash (not examined).
 Found by: the NoREC instance of the 12-hour campaign, round 12h-b, as
 an AFL++ crash (an `INSERT INTO v0 WITH x AS (... WITH x AS (...) ...)`
 statement with four levels of CTEs named `x`).
+
+Issue: https://github.com/tursodatabase/turso/issues/11401
 
 ## 15. Crash: ALTER TABLE DROP on a table that has only a table constraint
 
@@ -408,6 +435,70 @@ Found by: the NoREC instance of the 12-hour campaign, round 12h-b, as
 an AFL++ crash (`CREATE TABLE v0 (CONSTRAINT x FOREIGN KEY (x, x) REFERENCES v0 ...)`
 and `ALTER TABLE v0 DROP c`).
 
+Issue: https://github.com/tursodatabase/turso/issues/11402
+
+## 16. A VALUES row with a different length is accepted
+
+Only the first row of a multi-row `VALUES` list is compared with the
+column count. A shorter row takes the missing values from the row
+before it. A longer row loses its extra values without an error. A row
+with many extra values writes past the register file and panics.
+
+```sql
+CREATE TABLE t (a int, b int);
+INSERT INTO t VALUES (1, 2), (3);                  -- tursopg: accepted
+SELECT a, b FROM t;                                -- tursopg: 1 2 / 3 2
+INSERT INTO t VALUES (1, 2), (3, 4, 5);            -- tursopg: accepted, 5 is dropped
+INSERT INTO t VALUES (1, 2), (3, 4, 5, 6, 7, 8, 9, 10, 11, 12, 13, 14);   -- tursopg: panics
+```
+
+```text
+thread 'main' panicked at core/vdbe/execute.rs:5910:5:
+index out of bounds: the len is 9 but the index is 9
+```
+
+The panic is in `op_integer` (`state.registers[*dest]`). The number of
+extra values that is necessary for the panic changes with the program.
+A single wrong row is rejected: `INSERT INTO t VALUES (3)` gives
+`table t has 2 columns but 3 values were supplied`.
+
+Expected PostgreSQL behavior: all three inserts fail with
+`VALUES lists must all be the same length`.
+
+Found by: the 12-hour campaign.
+
+Issue: https://github.com/tursodatabase/turso/issues/11403
+
+## 17. Casts that PostgreSQL does not have are accepted
+
+tursopg accepts a cast to an array type from a scalar, and casts from
+an integer to `date`, `timestamp`, `uuid` and `interval`. The array
+cast fails only when it runs. In an index expression, the cast runs for
+each new row, so every insert into the table fails. Without the index,
+the same insert succeeds.
+
+```sql
+CREATE TABLE t (a int);
+CREATE INDEX ti ON t ((a::text[]));   -- tursopg: accepted
+INSERT INTO t VALUES (1);             -- tursopg: ERROR:  cannot store non-array value in TEXT column .
+SELECT count(*) FROM t;               -- tursopg: 0 (1 without the index)
+SELECT 5::text[];                     -- tursopg: the same error
+SELECT 5::date, 5::timestamp, 5::uuid, 5::interval;   -- tursopg: -4713-11-29 | -4713-11-29 12:00:00 | 5 | 5
+SELECT 5::serial;                     -- tursopg: 5
+```
+
+The error message has an empty table name and an empty column name.
+The same happens with a `money` source column and with `serial` as a
+cast type. `serial` is not a type in PostgreSQL.
+
+Expected PostgreSQL behavior: each cast fails when the statement is
+parsed, for example `cannot cast type integer to text[]`,
+`cannot cast type integer to date` and `type "serial" does not exist`.
+
+Found by: the 12-hour campaign.
+
+Issue: https://github.com/tursodatabase/turso/issues/11408
+
 ## Campaign log
 
 tursopg at submodule commit ff97c22, 4 cores, one `afl-fuzz` instance per
@@ -432,3 +523,6 @@ mutation library is the same set.
 The INDEX oracle ran once for two hours with the first harness build. The
 NoREC and TLP rounds after the first used the harness that prints the
 result markers itself and the seeds without transaction statements.
+
+The 12-hour campaign (round 12h-b in the findings) ran one instance per
+oracle and gave findings 7 to 17. Its counts were lost with the sandbox.
