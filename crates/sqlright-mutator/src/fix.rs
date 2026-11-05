@@ -28,7 +28,7 @@ pub struct FixContext {
     pub v_table_names_single: Vec<String>,
     /// Tables created by the current statement.
     pub v_create_table_names_single: Vec<String>,
-    /// Aliases defined in the current statement.
+    /// Output column aliases (`c AS a`) defined in the current statement.
     pub v_alias_names_single: Vec<String>,
     /// Table name to its aliases, in the current statement.
     pub m_table2alias_single: HashMap<String, Vec<String>>,
@@ -53,6 +53,12 @@ pub struct FixContext {
     /// tursopg gives their columns no type, so the types of the source
     /// columns are not the types of these columns.
     pub v_table_without_column_types: Vec<String>,
+    /// The domains and types that the test case defines (`CREATE DOMAIN`,
+    /// `CREATE TYPE`), in lower case.
+    pub v_created_type_names: Vec<String>,
+    /// The schemas that the test case creates (`CREATE SCHEMA`), in lower
+    /// case.
+    pub v_created_schema_names: Vec<String>,
     pub v_int_literals: Vec<i64>,
     pub v_float_literals: Vec<f64>,
     pub v_string_literals: Vec<String>,
@@ -104,6 +110,7 @@ const TYPES_TO_FIX: &[DataType] = &[
     DataType::ForeignTableName,
     DataType::ConstraintName,
     DataType::AliasTableName,
+    DataType::SchemaName,
 ];
 
 /// In-order list of the nodes below `root` whose role is in `types`.
@@ -152,6 +159,14 @@ impl Mutator {
         let stmt_type = t.ty(stmt);
         let cur_ir_str = t.to_string(stmt);
         let mut is_replace_table = false;
+        for id in ir_wrapper::preorder(t, stmt) {
+            if let Some(name) = ir_wrapper::defined_schema_name(t, id) {
+                self.ctx.v_created_schema_names.push(name);
+            }
+            if let Some(name) = ir_wrapper::defined_type_name(t, id) {
+                self.ctx.v_created_type_names.push(name);
+            }
+        }
 
         for ir_to_fix_vec in ir_to_fix_vecs {
             let mut v_with_clause_alias_table_name: Vec<String> = Vec::new();
@@ -361,7 +376,7 @@ impl Mutator {
                 }
             }
 
-            // Aliases. All aliases are treated as aliases of a table.
+            // Aliases.
             let mut alias_idx = 0;
             for &id in ir_to_fix_vec {
                 if fixed.contains(&id) {
@@ -393,14 +408,19 @@ impl Mutator {
                 }
                 let alias = self.gen_alias_name();
                 t.set_str_val(id, alias.clone());
-                if !is_bad_table_name(&closest) {
-                    self.ctx
-                        .m_table2alias_single
-                        .entry(closest)
-                        .or_default()
-                        .push(alias.clone());
+                // An alias in an alias clause (`FROM t a`, `(...) AS a`) names
+                // a table. Any other alias (`c AS a`) names an output column.
+                if ir_wrapper::is_ir_in_type(t, id, IrType::AliasClause) {
+                    if !is_bad_table_name(&closest) {
+                        self.ctx
+                            .m_table2alias_single
+                            .entry(closest)
+                            .or_default()
+                            .push(alias);
+                    }
+                } else {
+                    self.ctx.v_alias_names_single.push(alias);
                 }
-                self.ctx.v_alias_names_single.push(alias);
                 fixed.insert(id);
             }
 
@@ -447,7 +467,14 @@ impl Mutator {
                         .push(new_name.clone());
                     if flag == DataFlag::Define {
                         let typename = match t.parent(id).and_then(|p| t.right(p)) {
-                            Some(r) if t.ty(r) == IrType::Typename => Some(r),
+                            Some(r) if t.ty(r) == IrType::Typename => {
+                                let accepted = self.accepted_column_type(t, stmt, r);
+                                if accepted != r {
+                                    fixed.extend(ir_wrapper::preorder(t, r));
+                                    to_drop.push(r);
+                                }
+                                Some(accepted)
+                            }
                             _ => None,
                         };
                         let col_type =
@@ -938,6 +965,35 @@ impl Mutator {
                     );
                 }
             }
+
+            // Schema names. A schema that the test case creates keeps its
+            // name. Otherwise the schema is `public`, the schema of tursopg,
+            // or `pg_catalog` for a system catalog. The name after the
+            // schema is already filled in.
+            for &id in ir_to_fix_vec {
+                if fixed.contains(&id) || t.data_type(id) != DataType::SchemaName {
+                    continue;
+                }
+                fixed.insert(id);
+                let created = t.str_val(id).to_ascii_lowercase();
+                if self.ctx.v_created_schema_names.contains(&created) {
+                    continue;
+                }
+                let names_a_catalog = enclosing_qualified_name(t, id)
+                    .and_then(|qualified| t.qualified_name_parts(qualified))
+                    .and_then(|parts| parts.last().copied())
+                    .is_some_and(|name| {
+                        self.v_sys_catalogs_name
+                            .iter()
+                            .any(|c| c == t.str_val(name))
+                    });
+                let schema = if names_a_catalog {
+                    "pg_catalog"
+                } else {
+                    "public"
+                };
+                t.set_str_val(id, schema.to_string());
+            }
         }
 
         // Is the created table partitioned?
@@ -1078,6 +1134,49 @@ impl Mutator {
         true
     }
 
+    /// The column type `typename` when tursopg accepts it. Otherwise a copy
+    /// of an accepted column type of the seeds takes its place in the tree,
+    /// and the copy is returned. Without seeds, every type is kept.
+    fn accepted_column_type(&mut self, t: &mut IrTree, stmt: IrId, typename: IrId) -> IrId {
+        if self.v_seed_column_types.is_empty() || self.is_accepted_column_type(t, typename) {
+            return typename;
+        }
+        let candidates: Vec<usize> = (0..self.v_seed_column_types.len())
+            .filter(|&i| {
+                let seed_type = &self.v_seed_column_types[i];
+                let root = seed_type.root.expect("root");
+                ir_wrapper::generic_type_name(seed_type, root)
+                    .is_none_or(|name| !self.seed_defined_type_names.contains(&name))
+            })
+            .collect();
+        if candidates.is_empty() {
+            return typename;
+        }
+        let pick = candidates[self.rng.rand_int(candidates.len())];
+        let seed_type = &self.v_seed_column_types[pick];
+        let copy = t.import(seed_type, seed_type.root.expect("root"));
+        if !t.swap_node(stmt, typename, Some(copy)) {
+            t.deep_drop(copy);
+            return typename;
+        }
+        copy
+    }
+
+    /// True when tursopg accepts `typename` as a column type: the test case
+    /// defines it, or a seed uses it in a column definition and does not
+    /// define it with `CREATE DOMAIN` or `CREATE TYPE`.
+    fn is_accepted_column_type(&self, t: &IrTree, typename: IrId) -> bool {
+        if let Some(name) = ir_wrapper::generic_type_name(t, typename) {
+            if self.ctx.v_created_type_names.contains(&name) {
+                return true;
+            }
+            if self.seed_defined_type_names.contains(&name) {
+                return false;
+            }
+        }
+        self.seed_column_type_texts.contains(&t.to_string(typename))
+    }
+
     /// Define, remove, or use a name from a plain list (sequences, constraints).
     /// Definitions keep the original name, like the C++.
     fn fix_simple_name(
@@ -1201,6 +1300,16 @@ impl Mutator {
     }
 }
 
+/// The `qualified_name` node that holds the identifier `id`, when `id` is
+/// a part of a qualified name.
+fn enclosing_qualified_name(t: &IrTree, id: IrId) -> Option<IrId> {
+    let mut cur = t.parent(id)?;
+    while matches!(t.ty(cur), IrType::IndirectionEl | IrType::Indirection) {
+        cur = t.parent(cur)?;
+    }
+    (t.ty(cur) == IrType::QualifiedName).then_some(cur)
+}
+
 #[cfg(test)]
 mod tests {
     use super::*;
@@ -1293,6 +1402,200 @@ mod tests {
             m.validate(tree, r);
         }
         assert_eq!(m.ctx.v_table_without_column_types.len(), 1);
+    }
+
+    #[test]
+    fn a_table_alias_is_never_used_as_a_column() {
+        let oracle = AnySelect;
+        let sql = "CREATE TABLE t (a INT, b TEXT); SELECT a FROM t s WHERE b = 'y' AND a > 1 GROUP BY a; SELECT count(*) FROM (SELECT a FROM t) AS q WHERE a = 1;";
+        for seed in 0..200 {
+            let mut m = Mutator::new(seed);
+            let mut q = parse_query(sql).unwrap();
+            m.pre_validate();
+            let (mut trees, _types) = m.pre_fix_transform(&oracle, &mut q.tree, q.root);
+            for tree in trees.iter_mut() {
+                let r = tree.root.unwrap();
+                m.validate(tree, r);
+            }
+            for tree in &trees {
+                let r = tree.root.unwrap();
+                let mut table_aliases = Vec::new();
+                let mut columns = Vec::new();
+                for id in tree.all_nodes(r) {
+                    if tree.data_type(id) == DataType::AliasName
+                        && ir_wrapper::is_ir_in_type(tree, id, IrType::AliasClause)
+                    {
+                        table_aliases.push(tree.str_val(id).to_string());
+                    }
+                    if tree.data_type(id) == DataType::ColumnName {
+                        columns.push(tree.str_val(id).to_string());
+                    }
+                }
+                for c in &columns {
+                    assert!(
+                        !table_aliases.contains(c),
+                        "seed {seed}: table alias {c} used as a column in {}",
+                        tree.to_string(r)
+                    );
+                }
+            }
+        }
+    }
+
+    #[test]
+    fn a_qualified_name_is_a_schema_and_a_name() {
+        let q = parse_query("SELECT * FROM s.t; CREATE TABLE s.u (a INT);").unwrap();
+        let roles = |name: &str| -> Vec<(DataType, DataFlag)> {
+            q.tree
+                .all_nodes(q.root)
+                .into_iter()
+                .filter(|&id| q.tree.ty(id) == IrType::Identifier && q.tree.str_val(id) == name)
+                .map(|id| (q.tree.data_type(id), q.tree.data_flag(id)))
+                .collect()
+        };
+        assert_eq!(roles("s"), vec![(DataType::SchemaName, DataFlag::Use); 2]);
+        assert_eq!(roles("t"), vec![(DataType::TableName, DataFlag::Use)]);
+        assert_eq!(roles("u"), vec![(DataType::TableName, DataFlag::Define)]);
+    }
+
+    #[test]
+    fn a_schema_is_filled_in_as_public_or_pg_catalog() {
+        let oracle = AnySelect;
+        let sql = "CREATE TABLE t (a INT); SELECT a FROM s.t WHERE a > 1; SELECT relname FROM pg_catalog.pg_class;";
+        for seed in 0..100 {
+            let mut m = Mutator::new(seed);
+            let mut q = parse_query(sql).unwrap();
+            m.pre_validate();
+            let (mut trees, _types) = m.pre_fix_transform(&oracle, &mut q.tree, q.root);
+            for tree in trees.iter_mut() {
+                let r = tree.root.unwrap();
+                m.validate(tree, r);
+            }
+            let out: Vec<String> = trees.iter().map(|t| t.to_string(t.root.unwrap())).collect();
+            assert!(
+                out[1].contains("FROM public . v0 WHERE c1 > ")
+                    || out[1].contains("FROM public . v0 WHERE oid > "),
+                "seed {seed}: {}",
+                out[1]
+            );
+            assert!(
+                out[2].contains("FROM pg_catalog . pg_class")
+                    || out[2].contains("FROM public . v0"),
+                "seed {seed}: {}",
+                out[2]
+            );
+        }
+    }
+
+    #[test]
+    fn a_schema_that_the_test_case_creates_keeps_its_name() {
+        let oracle = AnySelect;
+        let sql = "CREATE SCHEMA s1; CREATE TABLE s1.t (a INT); SELECT a FROM s1.t;";
+        for seed in 0..20 {
+            let mut m = Mutator::new(seed);
+            let mut q = parse_query(sql).unwrap();
+            m.pre_validate();
+            let (mut trees, _types) = m.pre_fix_transform(&oracle, &mut q.tree, q.root);
+            for tree in trees.iter_mut() {
+                let r = tree.root.unwrap();
+                m.validate(tree, r);
+            }
+            let out: Vec<String> = trees.iter().map(|t| t.to_string(t.root.unwrap())).collect();
+            assert!(
+                out[1].starts_with("CREATE TABLE s1 . v0"),
+                "seed {seed}: {}",
+                out[1]
+            );
+            assert!(out[2].contains("FROM s1 . v0"), "seed {seed}: {}", out[2]);
+        }
+    }
+
+    #[test]
+    fn a_name_with_a_subscript_makes_no_table() {
+        let q = parse_query("CREATE TABLE u [ 1 ] (b INT);").unwrap();
+        let u = q
+            .tree
+            .all_nodes(q.root)
+            .into_iter()
+            .find(|&id| q.tree.ty(id) == IrType::Identifier && q.tree.str_val(id) == "u")
+            .unwrap();
+        assert_eq!(q.tree.data_type(u), DataType::TableNameFollow);
+
+        let oracle = AnySelect;
+        let mut m = Mutator::new(3);
+        let mut q = parse_query("CREATE TABLE t (a INT); CREATE TABLE u [ 1 ] (b INT);").unwrap();
+        m.pre_validate();
+        let (mut trees, _types) = m.pre_fix_transform(&oracle, &mut q.tree, q.root);
+        for tree in trees.iter_mut() {
+            let r = tree.root.unwrap();
+            m.validate(tree, r);
+        }
+        assert_eq!(m.ctx.v_table_names, vec!["v0".to_string()]);
+    }
+
+    /// The statements of `sql` after the instantiation step, with the seed
+    /// lines `seeds` in the library.
+    fn fixed_with_seeds(seed: u64, seeds: &[&str], sql: &str) -> Vec<String> {
+        let oracle = AnySelect;
+        let mut m = Mutator::new(seed);
+        for line in seeds {
+            assert!(m.init_from_line(&oracle, line), "{line}");
+        }
+        let mut q = parse_query(sql).unwrap();
+        m.pre_validate();
+        let (mut trees, _types) = m.pre_fix_transform(&oracle, &mut q.tree, q.root);
+        for tree in trees.iter_mut() {
+            let r = tree.root.unwrap();
+            m.validate(tree, r);
+        }
+        trees.iter().map(|t| t.to_string(t.root.unwrap())).collect()
+    }
+
+    #[test]
+    fn a_column_type_that_tursopg_rejects_is_replaced_by_a_seed_type() {
+        let seeds = [
+            "CREATE DOMAIN d1 AS int;",
+            "CREATE TABLE s (a d1, b text, c INT);",
+        ];
+        for seed in 0..50 {
+            let out =
+                fixed_with_seeds(seed, &seeds, "CREATE TABLE t (a d1, b nosuchtype, c text);");
+            let types: Vec<&str> = out[0]
+                .trim_start_matches("CREATE TABLE v0 ( ")
+                .trim_end_matches(" )")
+                .split(", ")
+                .map(|col| col.split_once(' ').unwrap().1)
+                .collect();
+            assert_eq!(types.len(), 3, "seed {seed}: {}", out[0]);
+            for ty in &types[..2] {
+                assert!(["text", "INT"].contains(ty), "seed {seed}: {}", out[0]);
+            }
+            assert_eq!(types[2], "text", "seed {seed}: {}", out[0]);
+        }
+    }
+
+    #[test]
+    fn a_domain_of_the_test_case_is_kept_as_a_column_type() {
+        let seeds = ["CREATE DOMAIN d1 AS int;", "CREATE TABLE s (a d1, b text);"];
+        for seed in 0..20 {
+            let out = fixed_with_seeds(
+                seed,
+                &seeds,
+                "CREATE DOMAIN d1 AS int; CREATE TABLE t (a d1, b d1 [ ]);",
+            );
+            assert!(
+                out[1].ends_with("( c1 d1, c2 d1 [ ] )"),
+                "seed {seed}: {}",
+                out[1]
+            );
+        }
+    }
+
+    #[test]
+    fn only_the_system_columns_of_tursopg_are_used() {
+        let mut m = Mutator::new(1);
+        m.pre_validate();
+        assert_eq!(m.v_sys_column_name, vec!["oid".to_string()]);
     }
 
     use crate::mutator::StmtType;

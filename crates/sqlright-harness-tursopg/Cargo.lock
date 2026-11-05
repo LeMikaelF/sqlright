@@ -1624,6 +1624,7 @@ dependencies = [
  "afl",
  "turso_core",
  "turso_pg",
+ "turso_pg_parser",
 ]
 
 [[package]]

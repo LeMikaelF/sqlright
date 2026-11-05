@@ -304,6 +304,10 @@ purpose:
   error message, and the result extraction split the output there.
 - The harness prints `ERROR:  <message>` for a failed statement, like the
   C++ PostgreSQL client did, so the result extraction is unchanged.
+- When the scanner of tursopg rejects one statement of a text, the
+  harness cuts the text after each line that ends with `;` and splits
+  each part alone. Then that statement fails alone, and the others run.
+  `sqlright seeds` needs this to find the failing statements of a file.
 - `min(a, b)` and `max(a, b)` with two or more arguments are scalar
   functions in tursopg (as in SQLite). The INDEX and TLP oracles do not take
   them for aggregates. The C++ took them for aggregates, compared only the
@@ -317,6 +321,19 @@ purpose:
 - A test case with the literal `9223372036854775807` is not checked. After a
   row gets the largest rowid, tursopg picks a random rowid for the next row
   (as SQLite does), so a `serial` key has a different value in each run.
+- In a `qualified_name` (`schema.table`), the last part gets the role of
+  the name, and each part before it is a schema name. The C++ used the
+  rule of a column reference, so `FROM s.t` became `FROM v0 . c2`. The
+  instantiation step keeps the name of a schema that the test case
+  creates. Otherwise it uses `public`, or `pg_catalog` when the name after
+  it is a system catalog that it keeps. A name with a subscript (`t[1]`)
+  keeps the C++ roles, so no table is recorded for it.
+- The instantiation step keeps the type of a column definition only when
+  a seed file uses the same type in a column definition, or when the test
+  case defines it with `CREATE DOMAIN` or `CREATE TYPE`. Otherwise a type
+  from the seeds takes its place. A type that a seed defines counts only
+  in a test case that defines it too. This works because the seeds hold
+  only statements that tursopg runs (`sqlright seeds --harness`).
 
 ## When a campaign reports hundreds of failures
 
@@ -375,6 +392,17 @@ comparison (finding 17).
 - The harness prints NULL as nothing, so a row `(1, NULL, 2)` and a row
   `(1, 2, NULL)` print the same. The row comparison of EET, DQE and
   LATERAL cannot see a NULL that moved to another column.
+- Many oracle SELECTs fail before the oracle can compare them. In 200
+  test cases per oracle, 23 % (NoREC), 50 % (TLP) and 51 % (INDEX) of
+  the result blocks held an error. The test cases came from the last 40
+  queue entries of the 2026-11-05 campaign, with seeds that the fixed
+  harness filtered. Frequent causes are names that the instantiation step
+  cannot fill (a placeholder `x` stays when no table exists), `a column
+  alias list on a table is not supported`, and HAVING in a query without
+  an aggregate.
+- The instantiation step does not know schemas or the search path. After
+  `SET search_path TO s`, an unqualified name does not find the tables of
+  `public`, and the statements that use them fail.
 - AFL++ reports some instability for the harness (the coverage of a run
   changes with hash map iteration order inside turso). AFL++ handles it; it
   only lowers the value of the coverage feedback.

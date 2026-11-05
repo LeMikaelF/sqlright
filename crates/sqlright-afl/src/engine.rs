@@ -107,6 +107,8 @@ pub struct EngineStats {
     pub cases_generated: u64,
     pub cases_checked: u64,
     pub skipped_non_deterministic: u64,
+    /// Oracle SELECTs left out because they have a row constructor.
+    pub skipped_row_constructor: u64,
     pub output_mismatch: u64,
     pub oracle_pass: u64,
     pub oracle_fail: u64,
@@ -373,6 +375,10 @@ impl Engine {
             if let Some(sel) =
                 get_random_mutated_select_stmt(self.oracle.as_ref(), &mut self.mutator)
             {
+                if has_row_constructor(&sel) {
+                    self.stats.skipped_row_constructor += 1;
+                    continue;
+                }
                 out.push(sel);
             }
         }
@@ -477,7 +483,7 @@ impl Engine {
         let s = &self.stats;
         let ms = &self.mutator.stats;
         let text = format!(
-            "oracle: {}\nseeds: {}\ninput parse failed: {}\nmutate_all calls: {}\nmutations that parse: {}\nmutations that do not parse: {}\nappend failed: {}\ncases generated: {}\ncases checked: {}\nskipped (non-deterministic): {}\noutput of another input: {}\noracle pass: {}\noracle fail: {}\noracle error: {}\nbug reports: {}\nlibrary selects: {}\noracle select mutations: {} ({} ok)\n",
+            "oracle: {}\nseeds: {}\ninput parse failed: {}\nmutate_all calls: {}\nmutations that parse: {}\nmutations that do not parse: {}\nappend failed: {}\ncases generated: {}\ncases checked: {}\nskipped (non-deterministic): {}\noutput of another input: {}\noracle pass: {}\noracle fail: {}\noracle error: {}\nbug reports: {}\nlibrary selects: {}\noracle select mutations: {} ({} ok)\noracle selects with a row constructor (left out): {}\n",
             self.oracle.oracle_type(),
             s.seeds,
             s.total_input_failed,
@@ -496,6 +502,7 @@ impl Engine {
             self.mutator.get_valid_collection_size(),
             ms.num_oracle_select_mutate,
             ms.num_oracle_select_succeed,
+            s.skipped_row_constructor,
         );
         let _ = std::fs::write(path, text);
     }
@@ -557,6 +564,18 @@ pub fn has_statement_timeout(output: &str) -> bool {
     output.lines().any(|l| l.trim_end() == "ERROR:  interrupt")
 }
 
+/// True when the SELECT has a row constructor (`(a, b)` or `ROW(a, b)`).
+/// tursopg rejects every row constructor with `Unsupported expression
+/// type: RowExpr`, so such an oracle SELECT only gives errors.
+fn has_row_constructor(sel: &sqlright_ir::IrTree) -> bool {
+    let Some(root) = sel.root else {
+        return false;
+    };
+    sel.all_nodes(root)
+        .into_iter()
+        .any(|id| matches!(sel.ty(id), IrType::ImplicitRow | IrType::ExplicitRow))
+}
+
 /// True when the text holds `BEGIN VERI` or `END VERI`. The result
 /// extraction finds the result blocks by these words. A string literal
 /// with these words in a statement other than a result marker can show in
@@ -576,7 +595,9 @@ mod tests {
             "INSERT INTO v0 (c1) SELECT '9223372036854775807'::float8::int8;"
         ));
         assert!(is_non_deterministic("SELECT random();"));
-        assert!(!is_non_deterministic("INSERT INTO v0 VALUES (9223372036854775);"));
+        assert!(!is_non_deterministic(
+            "INSERT INTO v0 VALUES (9223372036854775);"
+        ));
     }
 
     #[test]
@@ -588,6 +609,23 @@ mod tests {
         assert!(!has_statement_timeout(
             "ERROR:  syntax error near interrupt\n"
         ));
+    }
+
+    #[test]
+    fn finds_a_row_constructor() {
+        let tree = |sql: &str| {
+            let q = parse_query(sql).unwrap();
+            let stmt = ir_wrapper::get_first_stmt_from_root(&q.tree, q.root).unwrap();
+            q.tree.extract(stmt)
+        };
+        assert!(has_row_constructor(&tree(
+            "SELECT count(*) FROM v0 WHERE c1 << box((1, 2), (3, 4));"
+        )));
+        assert!(has_row_constructor(&tree("SELECT (1, 2) = (3, 4);")));
+        assert!(has_row_constructor(&tree("SELECT ROW(1, 2);")));
+        assert!(!has_row_constructor(&tree(
+            "SELECT count(*) FROM v0 WHERE c1 IN (1, 2) AND f(c1, 2) > 0;"
+        )));
     }
 
     #[test]

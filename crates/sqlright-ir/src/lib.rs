@@ -680,9 +680,9 @@ impl IrTree {
         self.set_type(id, data_type, data_flag)
     }
 
-    /// Set the role of a `qualified_name` node (its identifier). A qualified
-    /// name with a right child is a `schema.name`; its first part is treated
-    /// as a table name that follows another one.
+    /// Set the role of a `qualified_name` node. A qualified name with a
+    /// right child is `schema.name` (or `catalog.schema.name`): the last part
+    /// gets the role, and each part before it is a schema name.
     pub fn set_qualified_name_type(
         &mut self,
         id: IrId,
@@ -690,14 +690,59 @@ impl IrTree {
         data_flag: DataFlag,
     ) -> bool {
         debug_assert_eq!(self.ty(id), IrType::QualifiedName);
-        let Some(iden) = self.left(id) else {
+        let Some(parts) = self.qualified_name_parts(id) else {
+            // `x[1]` or `x.*` is not a name, and PostgreSQL rejects it. As in
+            // the C++, its first part is a table name that a column follows,
+            // so the instantiation step records no table for it.
+            let Some(iden) = self.left(id) else {
+                return false;
+            };
+            return self.set_type(iden, DataType::TableNameFollow, DataFlag::Use);
+        };
+        let Some((&last, before_last)) = parts.split_last() else {
             return false;
         };
-        if self.right(id).is_some() {
-            self.set_type(iden, DataType::TableNameFollow, DataFlag::Use);
-            return true;
+        for &part in before_last {
+            self.set_type(part, DataType::SchemaName, DataFlag::Use);
         }
-        self.set_type(iden, data_type, data_flag)
+        self.set_type(last, data_type, data_flag)
+    }
+
+    /// The identifiers of a `qualified_name` node, in the order of the text.
+    /// None when an element after the first part is not a name (`x[1]`,
+    /// `x.*`).
+    pub fn qualified_name_parts(&self, id: IrId) -> Option<Vec<IrId>> {
+        let mut parts: Vec<IrId> = self.left(id).into_iter().collect();
+        if let Some(indirection) = self.right(id) {
+            if !self.indirection_names(indirection, &mut parts) {
+                return None;
+            }
+        }
+        Some(parts)
+    }
+
+    /// Add the identifiers of the `. name` elements of an indirection to
+    /// `out`, in the order of the text. False when an element is not a
+    /// name.
+    fn indirection_names(&self, id: IrId, out: &mut Vec<IrId>) -> bool {
+        match self.ty(id) {
+            IrType::Indirection => {
+                self.left(id).is_none_or(|l| self.indirection_names(l, out))
+                    && self
+                        .right(id)
+                        .is_none_or(|r| self.indirection_names(r, out))
+            }
+            IrType::IndirectionEl => {
+                match self.left(id).filter(|&l| self.ty(l) == IrType::Identifier) {
+                    Some(iden) => {
+                        out.push(iden);
+                        true
+                    }
+                    None => false,
+                }
+            }
+            _ => false,
+        }
     }
 
     pub fn set_qualified_name_list_type(
@@ -714,9 +759,7 @@ impl IrTree {
                 None => return false,
             },
         };
-        if let Some(iden) = self.left(qualified_name) {
-            self.set_iden_type(iden, data_type, data_flag);
-        }
+        self.set_qualified_name_type(qualified_name, data_type, data_flag);
         if self.right(id).is_some() {
             if let Some(l) = self.left(id) {
                 return self.set_qualified_name_list_type(l, data_type, data_flag);

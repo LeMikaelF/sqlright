@@ -1,13 +1,18 @@
 # turso bugs found with SQLRight
 
 Findings from running the SQLRight rewrite against tursopg (the PostgreSQL
-frontend of turso). The turso version is the submodule commit in this
-repository. Each entry has a minimal SQL reproducer. Run a reproducer with:
+frontend of turso). Findings 1 to 25 were found at turso commit ff97c22.
+Each entry has a minimal SQL reproducer. Run a reproducer with:
 
 ```bash
 printf '<sql>' > repro.sql
 crates/sqlright-harness-tursopg/target/release/sqlright-harness-tursopg --replay repro.sql
 ```
+
+The submodule now points to turso commit 754b41e (2026-11-05). At that
+commit, the first reproducers of findings 8, 12, 16, 18, 22 and 23 no
+longer show the problem. The first reproducers of the other findings
+still do.
 
 SQLRight does not fix turso bugs. Issues were opened on 2026-11-04 for the
 findings that no existing issue covered: #11385 (finding 1), #11386
@@ -671,6 +676,26 @@ Found by: the NoREC instance of the 2026-11-05 campaign, as 5 AFL++ hangs
 
 Issue: https://github.com/tursodatabase/turso/issues/11459
 
+## 25. A row constructor is not supported
+
+tursopg rejects each row constructor. The SQLite frontend of turso
+supports row values.
+
+```sql
+SELECT (1, 2) = (1, 2);           -- tursopg: ERROR:  Unsupported expression type: ... RowExpr ...   PostgreSQL: t
+SELECT ROW(1, 2) = ROW(1, 2);     -- tursopg: the same error                                           PostgreSQL: t
+```
+
+`WHERE (a, b) = (1, 2)`, `WHERE (a, b) IN ((1, 2))` and
+`box((1, 2), (3, 4))` fail the same way. This error was the most
+frequent error of the NoREC oracle SELECTs (170 of 400 result blocks in
+a sample). SQLRight now leaves out oracle SELECTs with a row constructor.
+
+Issue: https://github.com/tursodatabase/turso/issues/11466
+
+Found by: the error-share analysis of the second 12-hour campaign of
+2026-11-05.
+
 ## The 12-hour campaign of 2026-11-05: findings and issues
 
 Three `afl-fuzz` instances (NoREC, TLP, INDEX) for 12 hours, turso commit
@@ -765,7 +790,18 @@ mutation library is the same set.
 | 4 | NoREC | 161k | 0 | 108,809 test cases, 96,545 comparable pairs, no failure (60 min, seeds without transaction statements, harness prints the markers) |
 | 6 | TLP | 65k | 0 | 25,130 test cases, 20,365 comparable pairs, no failure (50 min) |
 | 1 | INDEX | 52k | 0 | 23,199 multi-run test cases, 19,976 comparable blocks, no failure, no crash, no hang (120 min) |
+| 12h-2 | NoREC | 1,237k | 3 | 12 hours; 2 marker false positives, 1 finding 4; 155 crashes, 57 hangs |
+| 12h-2 | TLP | 296k + 715k | 13 | 3.3 hours (camp-tlp) and 8.8 hours (camp2-tlp, fixed library); 5 marker false positives, 8 finding 4; 10 crashes, 56 hangs |
+| 12h-2 | INDEX | 429k | 4 | 12 hours; 1 marker false positive, 2 finding 8, 1 #11408; 5 crashes, 7 hangs |
 
 The INDEX oracle ran once for two hours with the first harness build. The
 NoREC and TLP rounds after the first used the harness that prints the
 result markers itself and the seeds without transaction statements.
+
+Round 12h-2 is a second 12-hour campaign of 2026-11-05, on another
+machine, from 02:57 to 15:00 UTC. Its crashes and hangs were known
+problems: findings 1, 7, 10, 12, 15, 16, 18 and 22, and large inputs
+(`lpad`, `rpad` and `repeat` of hundreds of millions of characters).
+It found finding 25 and added comments to #11403 (a function result as
+the extra VALUES value panics in `op_function`) and #11011 (an index
+makes `WHERE c = 'x'` fail on a `NUMERIC(10, 2)` column).

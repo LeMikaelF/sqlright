@@ -116,14 +116,39 @@ fn run_statements(sql: &str, out: &mut Vec<u8>) {
             return;
         }
     };
-    let statements = turso_pg::split_statements(sql).unwrap_or_else(|_| vec![sql.trim().to_string()]);
-    for stmt in statements {
+    for stmt in split_statements(sql) {
         if stmt.trim().is_empty() {
             continue;
         }
         run_one(&conn, &stmt, out);
     }
     let _ = conn.close();
+}
+
+/// The statements of `sql`. When the scanner of tursopg rejects a part of
+/// the text, `turso_pg::split_statements` gives the whole text as one
+/// statement. Then the text is cut after each line that ends with `;`, and
+/// each part is split alone. A statement that the scanner rejects fails
+/// alone, and the other statements still run.
+fn split_statements(sql: &str) -> Vec<String> {
+    if turso_pg_parser::split_statements(sql).is_ok() {
+        return turso_pg::split_statements(sql).unwrap_or_else(|_| vec![sql.trim().to_string()]);
+    }
+    let mut parts = Vec::new();
+    let mut part = String::new();
+    for line in sql.lines() {
+        part.push_str(line);
+        part.push('\n');
+        if line.trim_end().ends_with(';') {
+            parts.push(std::mem::take(&mut part));
+        }
+    }
+    parts.push(part);
+    parts
+        .iter()
+        .filter(|part| !part.trim().is_empty())
+        .flat_map(|part| turso_pg::split_statements(part).unwrap_or_else(|_| vec![part.trim().to_string()]))
+        .collect()
 }
 
 /// Run one statement and append its rows or its error. A result marker
@@ -188,4 +213,21 @@ fn write_error(out: &mut Vec<u8>, error: &turso_pg::Error) {
     // Errors never contain a newline so that one line is one result row.
     let message = error.message.replace('\n', " ");
     let _ = writeln!(out, "ERROR:  {message}");
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    #[test]
+    fn a_statement_that_the_scanner_rejects_fails_alone() {
+        let statements = split_statements("SELECT 1;\nSELECT 100do;\nSELECT\n  2;\n");
+        assert_eq!(statements, vec!["SELECT 1", "SELECT 100do;", "SELECT\n  2"]);
+    }
+
+    #[test]
+    fn statements_are_split_by_the_scanner_when_it_accepts_the_text() {
+        let statements = split_statements("SELECT 'a;\nb'; SELECT 2;\n");
+        assert_eq!(statements, vec!["SELECT 'a;\nb'", "SELECT 2"]);
+    }
 }

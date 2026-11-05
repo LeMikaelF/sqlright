@@ -17,6 +17,7 @@ path = "src/main.rs"
 [dependencies]
 afl = "0.18.2"
 turso_pg = { path = "../../turso/postgres/frontend" }
+turso_pg_parser = { path = "../../turso/postgres/parser" }
 turso_core = { path = "../../turso/core", features = ["conn_raw_api"] }
 
 [profile.release]
