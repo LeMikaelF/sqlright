@@ -217,18 +217,56 @@ pub fn output_depends_on_the_plan(t: &IrTree, stmt: IrId) -> bool {
             // `*` is never grouped.
             return true;
         };
-        let target_has_aggregate = function_names(t, stmt, expr)
-            .iter()
-            .any(|n| is_aggregate_name(n));
-        if target_has_aggregate {
-            continue;
-        }
-        let text = squeeze(&t.to_string(expr));
-        if !group_items.contains(&text) {
+        if has_ungrouped_bare_column(t, stmt, expr, &group_items) {
             return true;
         }
     }
     false
+}
+
+/// True when a column reference of the target expression is neither
+/// inside an aggregate call nor part of a GROUP BY expression. Such a
+/// column has the value of some row of the group (`sum(c1) + c2`).
+fn has_ungrouped_bare_column(t: &IrTree, stmt: IrId, expr: IrId, group_items: &[String]) -> bool {
+    ir_wrapper::preorder(t, expr)
+        .into_iter()
+        .filter(|&n| t.ty(n) == IrType::Columnref && !ir_wrapper::is_in_subquery(t, stmt, n))
+        .any(|column| {
+            let mut cur = column;
+            loop {
+                if group_items.contains(&squeeze(&t.to_string(cur))) {
+                    return false;
+                }
+                if is_aggregate_call(t, cur) {
+                    return false;
+                }
+                if cur == expr {
+                    return true;
+                }
+                match t.parent(cur) {
+                    Some(p) => cur = p,
+                    None => return true,
+                }
+            }
+        })
+}
+
+/// True when the node is a call of an aggregate function.
+fn is_aggregate_call(t: &IrTree, node: IrId) -> bool {
+    if !ir_wrapper::compare_ir_type(t.ty(node), IrType::FuncApplication) {
+        return false;
+    }
+    let Some(func_name) = t.left(node) else {
+        return false;
+    };
+    if t.ty(func_name) != IrType::FuncName {
+        return false;
+    }
+    let Some(iden) = t.left(func_name) else {
+        return false;
+    };
+    let name = t.str_val(iden).to_ascii_lowercase();
+    is_aggregate_name(name.rsplit('.').next().unwrap_or(&name).trim())
 }
 
 /// True when a subquery of the statement reads the table.
@@ -386,6 +424,10 @@ mod tests {
             "SELECT * FROM v0 WHERE c1 > 0 GROUP BY c1;",
             "SELECT c1 FROM v0 WHERE c1 > 0 HAVING sum(c2) > 1;",
             "SELECT c1, sum(c2) FROM v0 WHERE c1 > 0;",
+            "SELECT sum(c1) + c2 FROM v0 WHERE c1 > 0;",
+            "SELECT sum(c1) + c2 FROM v0 WHERE c1 > 0 GROUP BY c1;",
+            "SELECT c1 + c2 FROM v0 WHERE c1 > 0 GROUP BY c1;",
+            "SELECT max(c1), c2 + 1 FROM v0 WHERE c1 > 0 GROUP BY c1;",
             "SELECT string_agg(c1, ',') FROM v0 WHERE c1 > 0;",
             "SELECT sum(c1) OVER () FROM v0 WHERE c1 > 0;",
         ] {
@@ -397,9 +439,13 @@ mod tests {
             "SELECT * FROM v0 WHERE c1 > 0;",
             "SELECT c1, c2 FROM v0 WHERE c1 > 0 GROUP BY c1, c2;",
             "SELECT c1, sum(c2) FROM v0 WHERE c1 > 0 GROUP BY c1;",
+            "SELECT sum(c1) + c2 FROM v0 WHERE c1 > 0 GROUP BY c2;",
+            "SELECT c1 + 1, max(c2) FROM v0 WHERE c1 > 0 GROUP BY c1;",
+            "SELECT sum(c1 + c2) + 1 FROM v0 WHERE c1 > 0;",
             "SELECT sum(c2), max(c1) FROM v0 WHERE c1 > 0;",
             "SELECT count(*) FROM v0 WHERE c1 > 0;",
             "SELECT c1 FROM v0 WHERE c1 > (SELECT c2 FROM v1 GROUP BY c3 HAVING sum(c4) > 1);",
+            "SELECT max((SELECT c3 FROM v1 WHERE v1.c4 = c2)) FROM v0 WHERE c1 > 0;",
         ] {
             let (t, s) = first_stmt(sql);
             assert!(!output_depends_on_the_plan(&t, s), "{sql}");
