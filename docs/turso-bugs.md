@@ -464,6 +464,7 @@ A longer pattern aborts the process under a 4 GB memory limit:
 3452713680 bytes failed` (AFL++ crash, INDEX instance). Comment:
 https://github.com/tursodatabase/turso/issues/11411#issuecomment-6649235187
 INDEX crashes 000004 to 000006 (src 002167) are the same abort, with an operand of more than 700 million characters on either side of LIKE.
+INDEX hangs 000002 and 000003 (src 002881) are the same LIKE: one aborts, one takes 10 seconds.
 
 ## 17. Arithmetic with a text column is accepted, and an index on it blocks inserts
 
@@ -492,6 +493,22 @@ Issue: https://github.com/tursodatabase/turso/issues/11387 covers it, as one
 more expression that PostgreSQL rejects (comment
 https://github.com/tursodatabase/turso/issues/11387#issuecomment-6649270385).
 Related: https://github.com/tursodatabase/turso/issues/10618 (an untyped literal, `'x' / 1`).
+
+## 18. lpad and rpad are about 11 times slower than repeat
+
+```sql
+SELECT length(lpad('nan', 910408173));    -- 22.5 s, 1765 MB
+SELECT length(repeat(' ', 910408173));    -- 1.9 s, 897 MB
+```
+
+`pad` in `core/functions/string.rs` adds the padding one character at a
+time, then copies it again with `format!`. The 1 GB size limit works:
+`lpad('nan', 1000000001)` fails with `string or blob too big`.
+
+Found by: the TLP instance of the 12-hour campaign of 2026-11-05, as an
+AFL++ hang (`c9 = lpad('nan', '910408173')` in three partitions).
+
+Issue: https://github.com/tursodatabase/turso/issues/11417
 
 ## Not turso bugs: harness and oracle limits
 
