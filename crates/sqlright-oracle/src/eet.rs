@@ -203,6 +203,10 @@ pub fn transform_statement(t: &mut IrTree, stmt: IrId, rng: &mut Rng) -> bool {
             sites.push((node, is_boolean_context(t, predicate, node)));
         }
     }
+    // tursopg compares a wrapped integer expression with an untyped
+    // literal by the SQLite type order (tursodatabase/turso#11415), so
+    // such an operand is not wrapped.
+    sites.retain(|&(node, boolean)| boolean || !compared_with_string_literal(t, node));
     let targets = scalar_targets(t, stmt);
     for target in targets {
         if rng.chance(1, 3) {
@@ -244,6 +248,70 @@ fn is_boolean_context(t: &IrTree, predicate: IrId, node: IrId) -> bool {
         && (t.get(parent).op.as_ref().is_none_or(|op| op.is_empty())
             || (prefix == "(" && middle == ")"));
     is_wrapper && is_boolean_context(t, predicate, parent)
+}
+
+/// Operators that compare their left operand with the value of their right
+/// operand.
+const VALUE_COMPARISONS: &[&str] = &[
+    "=",
+    "<>",
+    "!=",
+    "<",
+    ">",
+    "<=",
+    ">=",
+    "IN",
+    "NOT IN",
+    "LIKE",
+    "NOT LIKE",
+    "ILIKE",
+    "NOT ILIKE",
+    "SIMILAR TO",
+    "NOT SIMILAR TO",
+    "BETWEEN",
+    "NOT BETWEEN",
+    "BETWEEN SYMMETRIC",
+    "NOT BETWEEN SYMMETRIC",
+    "IS DISTINCT FROM",
+    "IS NOT DISTINCT FROM",
+];
+
+/// True when the node is an operand of a comparison whose other operand
+/// holds a string literal (`c1 >= '1'`, `c1 IN ('1', '3')`).
+fn compared_with_string_literal(t: &IrTree, node: IrId) -> bool {
+    let mut cur = node;
+    loop {
+        let Some(parent) = t.parent(cur) else {
+            return false;
+        };
+        let middle = t.middle(parent).trim().to_ascii_uppercase();
+        let prefix = t.prefix(parent).trim();
+        let right_is_empty = t.right(parent).is_none_or(|r| t.is_empty(r));
+        let is_wrapper = right_is_empty
+            && (t.get(parent).op.as_ref().is_none_or(|op| op.is_empty())
+                || (prefix == "(" && middle == ")"));
+        if is_wrapper {
+            cur = parent;
+            continue;
+        }
+        if !VALUE_COMPARISONS.contains(&middle.as_str()) {
+            return false;
+        }
+        // The grammar spreads `x BETWEEN a AND b` over three nodes; the
+        // literals are in the nodes above the BETWEEN node.
+        let mut top = parent;
+        while let Some(above) = t.parent(top) {
+            if !t.middle(above).trim().is_empty() || t.left(above) != Some(top) {
+                break;
+            }
+            top = above;
+        }
+        let operand: std::collections::HashSet<IrId> =
+            ir_wrapper::preorder(t, cur).into_iter().collect();
+        return ir_wrapper::preorder(t, top)
+            .iter()
+            .any(|&n| t.ty(n) == IrType::StringLiteral && !operand.contains(&n));
+    }
 }
 
 /// The sub-expressions of the predicate whose value is a boolean: the
@@ -306,14 +374,19 @@ fn apply_rule(t: &mut IrTree, stmt: IrId, node: IrId, rule: Rule, source: IrId, 
     // `node` stays in the tree until the wrapper exists; `holder` keeps
     // its place inside the wrapper until then.
     let holder = t.leaf(IrType::AExpr, "");
+    // The wrapper takes the place of `node` inside an operator of the
+    // statement, so it needs its own parentheses: `a AND false_expr OR b`
+    // is not `a AND (false_expr OR b)`.
     let wrapper = match rule {
         Rule::FalseOr => {
             let f = false_expr(t, source);
-            binary(t, f, "OR", holder)
+            let or = binary(t, f, "OR", holder);
+            paren(t, or)
         }
         Rule::TrueAnd => {
             let tr = true_expr(t, source);
-            binary(t, tr, "AND", holder)
+            let and = binary(t, tr, "AND", holder);
+            paren(t, and)
         }
         Rule::CaseFalseDead => {
             let f = false_expr(t, source);
@@ -478,7 +551,7 @@ mod tests {
                 "seed {seed}: {}",
                 texts[1]
             );
-            assert!(texts[1].contains("c1 > 1"), "{}", texts[1]);
+            assert!(texts[1].contains("c2 = 'x'"), "{}", texts[1]);
         }
     }
 
@@ -505,6 +578,61 @@ mod tests {
                 texts[1]
             );
             assert!(parse_query(&texts[1]).is_some(), "{}", texts[1]);
+        }
+    }
+
+    #[test]
+    fn keeps_the_precedence_of_a_wrapped_operand() {
+        // Rule 1 on the right operand of an AND must not become
+        // `a AND false_expr OR b`, which is `(a AND false_expr) OR b`.
+        let mut q = parse_query("SELECT c1 FROM v0 WHERE c3 > 2 AND c2 < 10;").unwrap();
+        let stmt = ir_wrapper::get_first_stmt_from_root(&q.tree, q.root).unwrap();
+        let predicate = where_expr(&q.tree, stmt).unwrap();
+        let right = q.tree.right(predicate).unwrap();
+        let source = q.tree.deep_copy(right);
+        let mut rng = Rng::seeded(1);
+        apply_rule(&mut q.tree, stmt, right, Rule::FalseOr, source, &mut rng);
+        apply_rule(
+            &mut q.tree,
+            stmt,
+            predicate,
+            Rule::TrueAnd,
+            source,
+            &mut rng,
+        );
+        let text = q.tree.to_string(stmt);
+        assert!(
+            text.contains("c3 > 2 AND ( ( ( ( c2 < 10 ) AND ( NOT ( c2 < 10 ) ) ) AND ( ( c2 < 10 ) IS NOT NULL ) ) OR ( c2 < 10 ) )"),
+            "{text}"
+        );
+        assert!(text.contains("WHERE ( ("), "{text}");
+        assert!(parse_query(&format!("{text};")).is_some(), "{text}");
+    }
+
+    #[test]
+    fn does_not_wrap_an_operand_compared_with_a_string_literal() {
+        let q = parse_query(
+            "SELECT c1 FROM v0 WHERE c1 >= '1' AND c2 = 5 AND c3 IN ('a', 'b') AND c4 + 1 BETWEEN '1' AND '3';",
+        )
+        .unwrap();
+        let stmt = ir_wrapper::get_first_stmt_from_root(&q.tree, q.root).unwrap();
+        let predicate = where_expr(&q.tree, stmt).unwrap();
+        let mut by_text = std::collections::HashMap::new();
+        for node in ir_wrapper::preorder(&q.tree, predicate) {
+            if ir_wrapper::compare_ir_type(q.tree.ty(node), IrType::AExpr) {
+                by_text.insert(q.tree.to_string(node), node);
+            }
+        }
+        assert!(compared_with_string_literal(&q.tree, by_text["c1"]));
+        assert!(!compared_with_string_literal(&q.tree, by_text["c2"]));
+        assert!(compared_with_string_literal(&q.tree, by_text["c3"]));
+        assert!(compared_with_string_literal(&q.tree, by_text["c4 + 1"]));
+        assert!(!compared_with_string_literal(&q.tree, by_text["c4"]));
+        assert!(!compared_with_string_literal(&q.tree, by_text["c1 >= '1'"]));
+        for seed in 1..40 {
+            let texts = forms("SELECT c1 FROM v0 WHERE c1 >= '1' AND c2 = 5;", seed);
+            assert_eq!(texts.len(), 2);
+            assert!(!texts[1].contains("END ) >= '1'"), "{}", texts[1]);
         }
     }
 

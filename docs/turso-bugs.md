@@ -450,6 +450,37 @@ before this campaign).
 Found by: the NoREC instance of the campaign of 2026-11-05, as two
 AFL++ crashes after 21 minutes.
 
+## 17. An integer expression compared with a string literal is never equal
+
+A bare integer column compared with a string literal works: tursopg
+converts the literal to the type of the column. An integer expression
+(`a + 0`, `abs(a)`, `CASE WHEN TRUE THEN a END`) compared with the same
+literal uses the SQLite type order instead. An integer is always less
+than a text, so `=`, `>=`, `IN` and `BETWEEN` are false and `<` is true.
+
+```sql
+CREATE TABLE t (a INT);
+INSERT INTO t VALUES (1), (3);
+SELECT a FROM t WHERE a >= '1';                           -- 1, 3
+SELECT a FROM t WHERE (a + 0) >= '1';                     -- no row
+SELECT a FROM t WHERE CASE WHEN TRUE THEN a END = '3';    -- no row
+SELECT a, (a + 0) >= '1', -a < '0' FROM t;                -- 1 0 1 and 3 0 1
+```
+
+A `FLOAT8` or `TEXT` column does not show the problem, and
+`(a + 0) >= '1'::int` works.
+
+Expected PostgreSQL behavior: the untyped literal takes the type of the
+other operand, so every query returns both rows.
+
+Found by: the EET oracle, in the first minutes of the 12-hour campaign
+of 2026-11-05 (every report that wrapped a column of a comparison with a
+string literal in `CASE WHEN ... END`). The EET oracle now leaves such
+operands alone, with a comment that names the issue, so that the campaign
+can find other problems.
+
+Issue: https://github.com/tursodatabase/turso/issues/11415
+
 ## Campaign log
 
 tursopg at submodule commit ff97c22, 4 cores, one `afl-fuzz` instance per
