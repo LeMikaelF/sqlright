@@ -116,14 +116,44 @@ H=$PWD/crates/sqlright-harness-tursopg/target/release/sqlright-harness-tursopg
      prefixes of the file, record the panic message and location.
    - A hang: find the slow statement with `timeout 30` and record the
      measured time. Do not try to make it finish.
-5. Record each new finding in `docs/turso-bugs.md` in the format of the
-   existing entries: a numbered heading, a minimal reproducer in a
-   ```sql block, the observed output, the expected PostgreSQL behavior,
-   and "Found by:". Add a row per oracle to the campaign log table.
-6. Commit with a lowercase imperative subject and a body that says why,
-   and push. Do not open GitHub issues; the user decides that.
+5. Report each new turso finding as a GitHub issue when you find it (see
+   section 5). A short entry in `docs/turso-bugs.md` is welcome but
+   secondary.
+6. Commit documentation and oracle fixes with a lowercase imperative
+   subject and a body that says why, and push.
 
-## 5. Rules
+## 5. Report a finding as a GitHub issue
+
+The deliverable of a campaign is one issue per new turso problem in
+tursodatabase/turso, opened as soon as the reproducer is minimal.
+
+1. Search the open issues first. Use the gh CLI for search, with
+   `is:issue` in the query and several key words per finding (the
+   function or statement name, the type, "panic", "tursopg", "index"):
+   `gh api -X GET search/issues -f q='repo:tursodatabase/turso is:issue is:open make_date' --jq '.items[] | "\(.number) \(.state) \(.title)"'`
+   An open issue that covers the finding means: do not file it. A closed
+   issue counts as covered only when its fix is newer than the turso
+   commit under test.
+2. Open the issue with the GitHub MCP tool `issue_write` (method
+   `create`). Write in simple English, every sentence under 20 words:
+   - Title: the problem in one sentence, for example
+     "tursopg: make_date panics on a large day number".
+   - Body: FIRST the minimal reproducer in a ```sql block. Then
+     "## Observed" with the output or the panic message and location.
+     Then "## Expected" with the PostgreSQL behavior. Then "## Version"
+     with the turso commit of the submodule. Then the sentence
+     "Found with SQLRight (https://github.com/LeMikaelF/sqlright), a
+     logic-bug fuzzer, running against tursopg."
+   - One issue per root cause. Group compatibility gaps of the same kind
+     into one issue. A variant of a known finding (another column type,
+     another function of the same family) goes as a comment on the
+     existing issue, not as a new issue.
+   - End the body with the attribution footer your environment requires.
+   - Never put an AI model name in an issue or a comment.
+3. Append one line per issue or comment to `work/issues-filed.log`:
+   `<UTC time> <URL> <title>`. A watcher can relay that file.
+
+## 6. Rules
 
 - Do not run `cargo afl build` in `crates/sqlright-harness-tursopg` while
   fuzzers run. It replaces the harness binary under them. Build into
