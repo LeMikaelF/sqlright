@@ -293,14 +293,22 @@ INSERT INTO t VALUES (0.5);                          -- tursopg: does not stop i
 
 Measured times for `INSERT INTO t VALUES (0.5)`: 2.0 seconds for a
 scale of 1,000,000, 7.4 seconds for 2,000,000 and 30 seconds for
-4,000,000. The harness has no time limit of its own, so AFL++ saves the
-test case as a hang.
+4,000,000. The harness has a limit of 2 seconds for each statement
+(`STATEMENT_TIMEOUT`), but the limit does not stop this insert. With a
+scale of 1,000,000 the insert runs about 4.5 seconds and gives no
+error. Thus AFL++ saves the test case as a hang.
 
 Expected PostgreSQL behavior: `CREATE TABLE` fails with
 `NUMERIC precision 852292321 must be between 1 and 1000`.
 
 Found by: the INDEX instance of the 12-hour campaign, as an AFL++ hang
-(`default/hangs/`).
+(`default/hangs/`). Found again in the campaign of 2026-11-05 as the
+hang `id:000000` of the INDEX instance (`NUMERIC(1849400536, 1849400536)`,
+then `INSERT INTO t VALUES ('-10e-400')`, no stop in 20 seconds).
+
+Issue: https://github.com/tursodatabase/turso/issues/11397. Comment on
+the 2-second limit:
+https://github.com/tursodatabase/turso/issues/11397#issuecomment-6650527672.
 
 ## 11. A bare column in a HAVING query without GROUP BY is NULL after a table scan
 
