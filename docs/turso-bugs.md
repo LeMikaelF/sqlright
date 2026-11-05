@@ -257,7 +257,8 @@ Count at 07:23 UTC: 4 of the 80 NoREC crashes have this panic. Count at
 08:26 UTC: 5 of the 221 NoREC crashes. Count at 09:28 UTC: 5 of the 273
 NoREC crashes. Count at 10:32 UTC: 5 of the 347 NoREC crashes. Count at
 11:40 UTC: 5 of the 423 NoREC crashes. Count at 12:44 UTC: 5 of the 460
-NoREC crashes. Count at 13:48 UTC: 5 of the 542 NoREC crashes.
+NoREC crashes. Count at 13:48 UTC: 5 of the 542 NoREC crashes. Final
+count (14:34 UTC): 5 of the 553 NoREC crashes.
 
 ## 8. ON CONFLICT DO UPDATE SET is not checked on a table without an index
 
@@ -308,7 +309,10 @@ the harness timeout; the fixed build gives ERROR),
 `bug_INDEX_f9f9bd32753072b6`. Batch of 11:08 UTC: `bug_INDEX_27033558ab1b9507`.
 Batch of 12:44 UTC: `bug_INDEX_aabecadeb6316adc` (`SET testns5`) and
 `bug_INDEX_ceecbfda15cfd8b8` (`SET b`). Batch of 13:48 UTC: 7 reports
-(`SET b` 3, `SET testns5` 2, `SET level1_no` 1, `SET a` 1).
+(`SET b` 3, `SET testns5` 2, `SET level1_no` 1, `SET a` 1). Final batch
+(14:34 UTC): 326 more `SET fruit` reports at 14:12 UTC from one queue
+entry, and 7 other reports (`SET level1_no` 2, `SET v`, `SET keep1`,
+`SET ftest1`, `SET b`, `SET a`).
 
 A flood: from 05:20 to 05:22 UTC the INDEX instance wrote 150 reports
 in 2 minutes. All 150 hold `ON CONFLICT DO UPDATE SET fruit = ...`. They
@@ -347,6 +351,7 @@ Found again as a partial index (`WHERE c1 = 'dump_nulls'` on a
 with other literals that are converted only at insert time:
 `bug_INDEX_3c014510d5e3e79f` (`WHERE v0.c1 / 'plot'` on a `serial`
 column), `bug_INDEX_c4b2d91033a5c23f` (`v0.c1 / '{"a":true,...}'`) and
+`bug_INDEX_ad322888d227ea5b` (final batch, `WHERE v0.c1 / '255.255.000.000/0'`),
 `bug_INDEX_59bb27fce00a48ac` (`'08:00:2b:ff:fe:01:02:03'::jsonb ->> c2`,
 `malformed JSON` at insert). PostgreSQL converts these literals when it
 makes the index, so `CREATE INDEX` fails there. Batch of 11:08 UTC:
@@ -380,7 +385,9 @@ then `INSERT INTO t VALUES ('-10e-400')`, no stop in 20 seconds). Hang
 `id:000002` of the INDEX instance is the same problem. So is hang
 `id:000000` of the NoREC instance (`NUMERIC(298295755, 298295755)`). So
 is TLP hang `id:000003` (`NUMERIC(180432432, 180432432)`, statement 4,
-the first `INSERT`).
+the first `INSERT`). So is INDEX hang `id:000003`
+(`NUMERIC(1529795337, 1529795337)`). Final hang count: NoREC 6, TLP 4,
+INDEX 4.
 
 Issue: https://github.com/tursodatabase/turso/issues/11397. Comment on
 the 2-second limit:
@@ -472,6 +479,8 @@ instance of the campaign of 2026-11-05 found it again as crash
 at 11:40 UTC: 1 of the 423 NoREC crashes and 1 of the 2 INDEX crashes.
 Count at 12:44 UTC: 1 of the 460 NoREC crashes and 1 of the 4 INDEX crashes.
 Count at 13:48 UTC: 2 of the 542 NoREC crashes and 1 of the 9 INDEX crashes.
+Final count: 2 of the 553 NoREC crashes and 1 of the 19 INDEX crashes.
+Issue #11398 was closed at 07:42 UTC on 2026-11-05.
 
 ## 13. make_date returns a blob
 
@@ -487,6 +496,9 @@ SELECT typeof(make_date(2024, 1, 1));   -- tursopg: blob
 Expected PostgreSQL behavior: a value of type `date`.
 
 Found by: the reduction of finding 12.
+
+Issue: covered by the open issue https://github.com/tursodatabase/turso/issues/9609
+("make_date returns a blob").
 
 ## 14. Crash: stack overflow on a nested CTE with the same name
 
@@ -518,6 +530,8 @@ can have the same crash (not examined).
 Found by: the NoREC instance of the 12-hour campaign, round 12h-b, as
 an AFL++ crash (an `INSERT INTO v0 WITH x AS (... WITH x AS (...) ...)`
 statement with four levels of CTEs named `x`).
+
+Issue: https://github.com/tursodatabase/turso/issues/11401 (open).
 
 ## 15. Crash: ALTER TABLE DROP on a table that has only a table constraint
 
@@ -559,7 +573,8 @@ again in the campaign of 2026-11-05: 2 of the 6 TLP crashes at 08:26 UTC
 09:28 UTC: 2 of the 8 TLP crashes. Count at 11:40 UTC: 2 of the 12 TLP
 crashes and 1 of the 423 NoREC crashes. Count at 12:44 UTC: 2 of the 15
 TLP crashes and 1 of the 460 NoREC crashes. Count at 13:48 UTC: 2 of the
-17 TLP crashes and 1 of the 542 NoREC crashes.
+17 TLP crashes and 1 of the 542 NoREC crashes. Final count: 2 of the 19
+TLP crashes and 1 of the 553 NoREC crashes.
 
 ## 16. Casts that PostgreSQL does not have are accepted
 
@@ -687,7 +702,8 @@ rejects as not IMMUTABLE): `bug_INDEX_23b876800dbb1b7a`,
 `bug_INDEX_d11013f6f7cb58ce`, `bug_INDEX_d3cd98e9be51d0fa` and
 `bug_INDEX_e3f53ae14b10c18d` (`timestamptz`). Batch of 13:48 UTC: 22
 reports (15 with `TEXT`, 6 with `INTEGER` array elements, 1 with
-`invalid time value`).
+`invalid time value`). Final batch: 28 reports (19 `TEXT`, 6 `INTEGER`
+and 3 `ANY` array elements).
 
 ## 17. Crash: a multi-row VALUES list with rows of different lengths
 
@@ -740,7 +756,9 @@ forms), 5 of the 8 TLP crashes and 1 of the 2 INDEX crashes. Count at
 the 2 INDEX crashes. Count at 12:44 UTC: 15 of the 460 NoREC crashes, 10
 of the 15 TLP crashes and 1 of the 4 INDEX crashes. Count at 13:48 UTC:
 18 of the 542 NoREC crashes (15 plus 3 more `VALUES` forms), 12 of the 17
-TLP crashes and 2 of the 9 INDEX crashes.
+TLP crashes and 2 of the 9 INDEX crashes. Final count: 18 of the 553
+NoREC crashes (15 plus 3 more `VALUES` forms), 14 of the 19 TLP crashes
+and 2 of the 19 INDEX crashes.
 
 ## 18. integer / text column is accepted
 
@@ -779,6 +797,8 @@ Reports of 08:26 UTC: `bug_INDEX_191daab77c2e66c3` (a partial index
 
 Batch of 11:08 UTC: `bug_INDEX_1549b3e94da32994` (`division by zero`).
 Batch of 13:48 UTC: `bug_INDEX_514973afa2cb2adc` (`c2 % '192.168.1.255/6'::text`).
+Final batch: `bug_INDEX_3ecc3d8fca8cb2e8` (the same `%`) and
+`bug_INDEX_f2e08eb8aade3d46` (`1 / c2`).
 A burst of 28 reports from 10:52 to 10:57 UTC came from one queue entry.
 Each has a partial index `WHERE v0.c2 = 'dump_nulls' AND lcm(c1, - c2)`.
 tursopg accepts the unary `-` on a `text` column (`- 'abc'::text` gives
@@ -844,7 +864,8 @@ Found by: the INDEX oracle, campaign of 2026-11-05
 `bug_INDEX_3e42493a5f64bd22`, `bug_INDEX_4d082225c01e7dc5`,
 `bug_INDEX_4e554e0eb8a6579c`, `bug_INDEX_52083cf69d0e8f91`,
 `bug_INDEX_68d37717614561a2`, `bug_INDEX_6d462f2a669cfb58` and
-`bug_INDEX_ba74ac6e5889dfdc`. Batch of 13:48 UTC: 1 report.
+`bug_INDEX_ba74ac6e5889dfdc`. Batch of 13:48 UTC: 1 report. Final batch:
+8 reports.
 
 Issue: a variant of https://github.com/tursodatabase/turso/issues/9663
 (the same problem with `rowid`). Comment:
@@ -917,7 +938,8 @@ and 1 of the 8 TLP crashes. Count at 10:32 UTC: 323 of the 347 NoREC
 crashes and 1 of the 8 TLP crashes. Count at 11:40 UTC: 397 of the 423
 NoREC crashes and 3 of the 12 TLP crashes. Count at 12:44 UTC: 435 of the
 460 NoREC crashes and 3 of the 15 TLP crashes. Count at 13:48 UTC: 516 of
-the 542 NoREC crashes and 3 of the 17 TLP crashes.
+the 542 NoREC crashes and 3 of the 17 TLP crashes. Final count: 527 of
+the 553 NoREC crashes and 3 of the 19 TLP crashes.
 
 ## 23. LIKE reads the whole string when the first characters differ
 
@@ -942,7 +964,11 @@ takes 7.6 seconds in all. For 50,000,000 characters, `repeat` takes
 takes almost no time in PostgreSQL.
 
 The statement does not stop at the 2-second limit of the harness. This is
-a performance difference, not a wrong result. Issue: none.
+a performance difference, not a wrong result. Issue: none from this
+campaign. Related by title (not read): #11411 (closed, "LIKE on a long
+string uses about 5 times ..."), #11417 (closed, "lpad and rpad are about
+11 times slower than repeat ...") and #11413 (open, "the query timeout
+does not stop a slow conversion ...").
 
 Other hangs of the same kind (a very long string; the harness limit of
 2 seconds cannot stop the statement):
@@ -1059,7 +1085,8 @@ Found by: the INDEX instance, campaign of 2026-11-05, as AFL++ crashes
 `'10e400'`).
 
 Issue: https://github.com/tursodatabase/turso/issues/11469. Count at
-13:48 UTC: 6 of the 9 INDEX crashes.
+13:48 UTC: 6 of the 9 INDEX crashes. Final count: 16 of the 19 INDEX
+crashes.
 
 ## Campaign log
 
@@ -1086,19 +1113,82 @@ The INDEX oracle ran once for two hours with the first harness build. The
 NoREC and TLP rounds after the first used the harness that prints the
 result markers itself and the seeds without transaction statements.
 
-### Campaign of 2026-11-05 (12 hours, in progress)
+### Campaign of 2026-11-05 (12 hours, 02:34 to 14:34 UTC)
 
-Three instances (NoREC, TLP, INDEX) on tursopg at submodule commit ff97c22.
-The final numbers go here when the campaign ends. SQLRight found five
-false-positive classes in the first 8 hours. Each one is fixed at its
-source and has a unit test (the fourth one has a test of its helper only).
-The running instances use the old library, so they can still write these
+Three instances (NoREC, TLP, INDEX), one for each oracle, on tursopg at
+submodule commit ff97c22. Each instance ran for 43,200 seconds on its own
+core. The instances used the library of the start of the campaign. They did
+not get the SQLRight fixes below, which came during the campaign.
+
+| Oracle | AFL++ runs | Test cases checked | Pass | Error | Reports | Crashes | Hangs | Queue |
+|---|---|---|---|---|---|---|---|---|
+| NoREC | 1,124,913 | 992,667 | 771,842 | 154,688 | 5 | 553 | 6 | 20,406 |
+| TLP | 932,604 | 751,150 | 419,032 | 284,886 | 41 | 19 | 4 | 28,021 |
+| INDEX | 762,849 | 629,809 | 473,578 | 129,897 | 947 | 19 | 4 | 20,971 |
+
+In all, the campaign made about 2.8 million AFL++ runs and checked about
+2.4 million test cases. The oracles skipped 66,132 (NoREC), 47,191 (TLP)
+and 25,387 (INDEX) test cases as non-deterministic.
+
+What the reports were:
+
+- NoREC, 5 reports: 4 are finding 4 (index lookup and expression disagree)
+  and 1 is a SQLRight false positive (a marker literal).
+- TLP, 41 reports: 38 are finding 4 (a `jsonb PRIMARY KEY` column, 3 queue
+  entries gave 6, 12 and 20 reports) and 3 are SQLRight false positives
+  (marker literals and marker statements).
+- INDEX, 947 reports: 478 hold `SET fruit` (finding 8, two queue entries gave
+  152 and 326 reports) and 92 are the `::timestamptz` cast (finding 16, one
+  queue entry). The others are findings 4, 8, 9, 11, 16, 18, 19, 20, 21 and
+  24, and 10 SQLRight false positives (see the table).
+
+What the crashes were:
+
+- NoREC, 553 crashes: 527 are finding 22 (8 array dimensions), 18 are
+  finding 17 (VALUES rows), 5 are finding 7 (aggregate), 2 are finding 12
+  (`make_date`) and 1 is finding 15 (ALTER TABLE DROP).
+- TLP, 19 crashes: 14 are finding 17, 3 are finding 22 and 2 are finding 15.
+- INDEX, 19 crashes: 16 are finding 26 (`avg` over a moving frame), 2 are
+  finding 17 and 1 is finding 12.
+
+What the hangs were: 5 are finding 10 (a very large `NUMERIC` scale, 1 NoREC,
+1 TLP and 3 INDEX). 9 are finding 23 (very long strings: 5 NoREC, 3 TLP and
+1 INDEX). The 2-second statement limit of the harness stops neither kind.
+
+Issues from this campaign:
+
+- New: #11408 (casts), #11420 (DELETE and UPDATE with an alias), #11453 (IN
+  list) and #11469 (window `avg` and `sum`).
+- Issues from earlier rounds, for findings that this campaign found again:
+  #11385 to #11388, #11395 to #11403 and #11416.
+- Comments on open issues: #11369, #11408 (2), #11403, #11396, #11387 (2),
+  #9615, #9663, #11397, #7977 and #8337.
+- Fixed upstream during the campaign, by merged pull requests: #11407
+  (#11414), #11398 (#11412), #11416 (#11423) and #11453 (#11467). The
+  campaign tests an older commit, so these findings still show in its
+  reports.
+
+Speed: the instances were slow in phases. A statement of a queue entry hit the
+2-second limit of the harness (about 1 run per second, instead of 40 or more),
+or an entry gave a burst of crashes (the NoREC instance made 527 crashes of the
+array dimension panic in several bursts, and the two bursts that I measured
+took about 30 minutes each).
+In the first 4 hours, TLP lost about half of its normal runs, NoREC about 30%
+and INDEX about 18% (estimates from the windows of `plot_data`).
+
+SQLRight found five false-positive classes. Each one is fixed at its source
+and has a unit test (the marker-literal fix has a test of its helper only).
+The running instances did not have the fixes, so they still wrote these
 reports.
 
-| Class | Oracle | Reports | Fix |
+| Class | Oracle | Reports | Fix (commit) |
 |---|---|---|---|
-| a query holds the literal `'BEGIN VERI 1'`, and the error message repeats it | NoREC | 1 | the result extraction takes a marker only as a whole line |
-| a statement hits the 2-second limit of the harness in one run only | INDEX | 1 | a Fail with `ERROR:  interrupt` in the output becomes Error |
-| `max(a, b)` with two arguments taken for an aggregate | INDEX | 6 | `ir_wrapper::is_scalar_min_max` (also used by TLP) |
-| a row gets the largest rowid, and the next `serial` value is random | INDEX | 1 (`bug_INDEX_f2846adf2d7c68d5`) | `is_non_deterministic` takes the literal `9223372036854775807` as non-deterministic |
-| a query returns the row `END VERI 1`, which looks like a marker (`SELECT 'END VERI 1' FROM t`), or a stray marker statement sits among the normal statements | TLP | 3 (`bug_TLP_c5b14ce82655389a` at 10:33 UTC turns from FAIL to ERROR when the marker literals are renamed) | the mutator does not learn or reuse marker literals, and it does not add marker statements to the library (`is_marker_text` and `is_marker_statement` in `fix.rs`) |
+| a query holds the literal `'BEGIN VERI 1'`, and the error message repeats it | NoREC | 1 | the result extraction takes a marker only as a whole line (65ff469) |
+| a statement hits the 2-second limit of the harness in one run only | INDEX | 3 | a Fail with `ERROR:  interrupt` in the output becomes Error (65ff469) |
+| `max(a, b)` with two arguments taken for an aggregate | INDEX | 6 | `ir_wrapper::is_scalar_min_max`, also used by TLP (c97aaf8) |
+| a row gets the largest rowid, and the next `serial` value is random | INDEX | 1 (`bug_INDEX_f2846adf2d7c68d5`) | `is_non_deterministic` takes the literal `9223372036854775807` as non-deterministic (d9450a0) |
+| a query returns the row `END VERI 1`, which looks like a marker, or a stray marker statement sits among the normal statements | TLP | 3 | the mutator does not learn or reuse marker literals, and it does not add marker statements to the library (ab520e3, 43845ea) |
+
+Open question for the next campaign: restart with the five fixes, and decide
+how to handle the slow phases (a `gdb` watcher, or a harness that logs each
+statement that reaches the 2-second limit).
