@@ -17,6 +17,7 @@ Issues #11395 to #11408 came from the 12-hour campaign of 2026-11-05.
 PostgreSQL does not have) have no entry in this file.
 NOREC crash 000000 (src 002220) of that campaign is #11403: a longer VALUES row
 panics in `op_string8` (`index out of bounds: the len is 9 but the index is 9`).
+NOREC crash 000001 (src 002305) is the same panic.
 
 ## 1. Crash: extension aggregate in a GROUP BY query
 
@@ -509,6 +510,12 @@ Related: https://github.com/tursodatabase/turso/issues/10618 (an untyped literal
   engine now removes the marker statements of a queue entry before it adds
   the entry to the mutation library. A running instance uses the fix only
   after a restart with a rebuilt `libsqlright_afl.so`.
+  TLP reports `bug_TLP_dfd1111479ded61c` and `bug_TLP_850d9d3fcbe3cabe` came
+  from the old library and have the same cause.
+- TLP crash 000000 (src 003184) is `quote_literal(lpad('temp', 704328054))`.
+  `quote_literal` asks for 2 bytes per character (1,408,656,110 bytes) and
+  the process aborts under the 4 GB limit. PostgreSQL asks for the same
+  size and refuses it, because one allocation is limited to 1 GB.
 
 ## Campaign log
 
