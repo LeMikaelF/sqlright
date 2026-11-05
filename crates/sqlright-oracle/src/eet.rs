@@ -203,10 +203,11 @@ pub fn transform_statement(t: &mut IrTree, stmt: IrId, rng: &mut Rng) -> bool {
             sites.push((node, is_boolean_context(t, predicate, node)));
         }
     }
-    // tursopg compares a wrapped integer expression with an untyped
-    // literal by the SQLite type order (tursodatabase/turso#11415), so
-    // such an operand is not wrapped.
-    sites.retain(|&(node, boolean)| boolean || !compared_with_string_literal(t, node));
+    // tursopg compares a bare column by the type of the column, and a
+    // wrapped column by the SQLite type order of its value
+    // (tursodatabase/turso#11415), so an operand of a comparison is not
+    // wrapped.
+    sites.retain(|&(node, boolean)| boolean || !is_operand_of_a_comparison(t, node));
     let targets = scalar_targets(t, stmt);
     for target in targets {
         if rng.chance(1, 3) {
@@ -276,9 +277,10 @@ const VALUE_COMPARISONS: &[&str] = &[
     "IS NOT DISTINCT FROM",
 ];
 
-/// True when the node is an operand of a comparison whose other operand
-/// holds a string literal (`c1 >= '1'`, `c1 IN ('1', '3')`).
-fn compared_with_string_literal(t: &IrTree, node: IrId) -> bool {
+/// True when the node is an operand of a comparison (`c1 >= '1'`,
+/// `c1 IN (1, 3)`, `c1 BETWEEN 1 AND 3`), through the wrapper nodes of
+/// the grammar.
+fn is_operand_of_a_comparison(t: &IrTree, node: IrId) -> bool {
     let mut cur = node;
     loop {
         let Some(parent) = t.parent(cur) else {
@@ -294,23 +296,23 @@ fn compared_with_string_literal(t: &IrTree, node: IrId) -> bool {
             cur = parent;
             continue;
         }
-        if !VALUE_COMPARISONS.contains(&middle.as_str()) {
+        // The grammar spreads `x BETWEEN a AND b` over three nodes: the
+        // bounds are the right children of the nodes above the BETWEEN
+        // node, which have an empty middle.
+        if middle.is_empty() && t.right(parent) == Some(cur) {
+            let mut below = t.left(parent);
+            while let Some(b) = below {
+                if t.middle(b).trim().to_ascii_uppercase().contains("BETWEEN") {
+                    return true;
+                }
+                if !t.middle(b).trim().is_empty() {
+                    break;
+                }
+                below = t.left(b);
+            }
             return false;
         }
-        // The grammar spreads `x BETWEEN a AND b` over three nodes; the
-        // literals are in the nodes above the BETWEEN node.
-        let mut top = parent;
-        while let Some(above) = t.parent(top) {
-            if !t.middle(above).trim().is_empty() || t.left(above) != Some(top) {
-                break;
-            }
-            top = above;
-        }
-        let operand: std::collections::HashSet<IrId> =
-            ir_wrapper::preorder(t, cur).into_iter().collect();
-        return ir_wrapper::preorder(t, top)
-            .iter()
-            .any(|&n| t.ty(n) == IrType::StringLiteral && !operand.contains(&n));
+        return VALUE_COMPARISONS.contains(&middle.as_str());
     }
 }
 
@@ -610,9 +612,9 @@ mod tests {
     }
 
     #[test]
-    fn does_not_wrap_an_operand_compared_with_a_string_literal() {
+    fn does_not_wrap_an_operand_of_a_comparison() {
         let q = parse_query(
-            "SELECT c1 FROM v0 WHERE c1 >= '1' AND c2 = 5 AND c3 IN ('a', 'b') AND c4 + 1 BETWEEN '1' AND '3';",
+            "SELECT c1 FROM v0 WHERE c1 >= '1' AND c2 = 5 AND c3 IN ('a', 'b') AND c4 + 1 BETWEEN 1 AND c5 AND abs(c6) > 0;",
         )
         .unwrap();
         let stmt = ir_wrapper::get_first_stmt_from_root(&q.tree, q.root).unwrap();
@@ -623,16 +625,24 @@ mod tests {
                 by_text.insert(q.tree.to_string(node), node);
             }
         }
-        assert!(compared_with_string_literal(&q.tree, by_text["c1"]));
-        assert!(!compared_with_string_literal(&q.tree, by_text["c2"]));
-        assert!(compared_with_string_literal(&q.tree, by_text["c3"]));
-        assert!(compared_with_string_literal(&q.tree, by_text["c4 + 1"]));
-        assert!(!compared_with_string_literal(&q.tree, by_text["c4"]));
-        assert!(!compared_with_string_literal(&q.tree, by_text["c1 >= '1'"]));
+        for operand in ["c1", "c2", "c3", "c4 + 1", "c5", "abs ( c6 )"] {
+            assert!(
+                is_operand_of_a_comparison(&q.tree, by_text[operand]),
+                "{operand}"
+            );
+        }
+        for other in ["c4", "c6", "c1 >= '1'", "c2 = 5"] {
+            assert!(
+                !is_operand_of_a_comparison(&q.tree, by_text[other]),
+                "{other}"
+            );
+        }
         for seed in 1..40 {
             let texts = forms("SELECT c1 FROM v0 WHERE c1 >= '1' AND c2 = 5;", seed);
             assert_eq!(texts.len(), 2);
             assert!(!texts[1].contains("END ) >= '1'"), "{}", texts[1]);
+            assert!(!texts[1].contains("END ) = ( CASE"), "{}", texts[1]);
+            assert!(!texts[1].contains("END ) = 5"), "{}", texts[1]);
         }
     }
 
