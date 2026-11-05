@@ -110,6 +110,10 @@ Text in scientific notation is read as a Julian day too: after
 `INSERT INTO t VALUES ('-10e-400')`, `WHERE c = '10e-400'` finds the row
 only through the index (campaign of 2026-11-05, INDEX,
 `bug_INDEX_5ffdc5174ae637df`).
+A `timestamp` column with a plain index does the same: after
+`INSERT INTO t VALUES (2)`, `c = 2` is false as an expression, and
+`WHERE c = 2` finds the row through the index (campaign of 2026-11-05,
+NoREC, `bug_NOREC_3f1369eafa254aac` and `bug_NOREC_4187b2e5c1a1ccee`).
 A `jsonb` primary key does the same: after `INSERT INTO t VALUES (1), (2), (6)`,
 `WHERE c = 6` counts 1 row and `WHERE NOT (c = 6)` counts 3 rows, so
 `sum(c)` over the TLP partitions is 15 instead of 9 (round 12h-b, TLP). With a
@@ -210,7 +214,7 @@ panic occurs in a `VALUES` list and in `UPDATE ... SET`:
 VALUES` and `... in UPDATE`. A comment on the issue already covers
 these forms:
 https://github.com/tursodatabase/turso/issues/11395#issuecomment-6648263299.
-Crash `id:000010` is the same `VALUES` form.
+Crashes `id:000010`, `id:000012` and `id:000015` are the same `VALUES` form.
 
 ## 8. ON CONFLICT DO UPDATE SET is not checked on a table without an index
 
@@ -698,6 +702,38 @@ Found by: the INDEX oracle, campaign of 2026-11-05
 (`bug_INDEX_9643460f6e12096a`).
 
 Issue: https://github.com/tursodatabase/turso/issues/11420.
+
+## 22. Crash: an array type with 8 dimensions
+
+A column type or a cast type with more than 7 array dimensions fails an
+assertion in `set_array_dimensions` (`core/schema.rs`).
+
+```sql
+CREATE TABLE t (c int[][][][][][][][]);
+SELECT '{1}'::int[][][][][][][][];
+```
+
+```text
+thread 'main' panicked at core/schema.rs:10746:13:
+array dimensions must be <= 7
+```
+
+`ALTER TABLE t ADD COLUMN d int[][][][][][][][]` panics too.
+
+Expected PostgreSQL behavior: PostgreSQL ignores the declared number of
+dimensions. PostgreSQL 16.15 accepts the `CREATE TABLE` and returns
+`{1}` for the cast.
+
+Found by: the NoREC instance, campaign of 2026-11-05, as AFL++ crashes
+`id:000013` and `id:000014`.
+
+Issue: https://github.com/tursodatabase/turso/issues/11416 (`CREATE TABLE`).
+A comment already covers the cast and `ALTER TABLE`:
+https://github.com/tursodatabase/turso/issues/11416#issuecomment-6650371427.
+The issue was closed at 06:32 UTC on 2026-11-05 by pull request
+https://github.com/tursodatabase/turso/pull/11423 (merged), which rejects
+types with more than 7 dimensions. The fix is newer than the turso commit
+under test (ff97c22), so the crash is fixed upstream.
 
 ## Campaign log
 
