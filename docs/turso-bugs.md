@@ -114,6 +114,7 @@ A `timestamp` column with a plain index does the same: after
 `INSERT INTO t VALUES (2)`, `c = 2` is false as an expression, and
 `WHERE c = 2` finds the row through the index (campaign of 2026-11-05,
 NoREC, `bug_NOREC_3f1369eafa254aac` and `bug_NOREC_4187b2e5c1a1ccee`).
+A `timestamp UNIQUE` column does the same (`bug_NOREC_148a396fab798a8d`).
 A `jsonb` primary key does the same: after `INSERT INTO t VALUES (1), (2), (6)`,
 `WHERE c = 6` counts 1 row and `WHERE NOT (c = 6)` counts 3 rows, so
 `sum(c)` over the TLP partitions is 15 instead of 9 (round 12h-b, TLP). With a
@@ -215,7 +216,8 @@ VALUES` and `... in UPDATE`. A comment on the issue already covers
 these forms:
 https://github.com/tursodatabase/turso/issues/11395#issuecomment-6648263299.
 Crashes `id:000010`, `id:000012` and `id:000015` are the same `VALUES` form.
-Count at 07:23 UTC: 4 of the 80 NoREC crashes have this panic.
+Count at 07:23 UTC: 4 of the 80 NoREC crashes have this panic. Count at
+08:26 UTC: 5 of the 221 NoREC crashes.
 
 ## 8. ON CONFLICT DO UPDATE SET is not checked on a table without an index
 
@@ -251,7 +253,8 @@ https://github.com/tursodatabase/turso/issues/9664 (unknown name in
 DO UPDATE). Found again on 2026-11-05 (`bug_INDEX_7bdd7c2ec31c66e2`,
 `bug_INDEX_1988eb367ad99269`, `bug_INDEX_707f3d23a099f49f`,
 `bug_INDEX_ee0a950fc16e90b4`). At 06:20 UTC, 152 reports with
-`SET fruit` came from one queue entry. Later forms: `SET level1_no`
+`SET fruit` came from one queue entry. At 08:26 UTC, the count of
+`SET fruit` reports is still 152. Later forms: `SET level1_no`
 (`bug_INDEX_4cb878e594f11cd4`, `bug_INDEX_cd71494ab578e117`),
 `SET value` (`bug_INDEX_81b8b3f09cc3f7e9`) and `SET a`
 (`bug_INDEX_d2523676375ffab9`). Batch of 07:23 UTC:
@@ -316,7 +319,8 @@ Expected PostgreSQL behavior: `CREATE TABLE` fails with
 Found by: the INDEX instance of the 12-hour campaign, as an AFL++ hang
 (`default/hangs/`). Found again in the campaign of 2026-11-05 as the
 hang `id:000000` of the INDEX instance (`NUMERIC(1849400536, 1849400536)`,
-then `INSERT INTO t VALUES ('-10e-400')`, no stop in 20 seconds).
+then `INSERT INTO t VALUES ('-10e-400')`, no stop in 20 seconds). Hang
+`id:000002` of the INDEX instance is the same problem.
 
 Issue: https://github.com/tursodatabase/turso/issues/11397. Comment on
 the 2-second limit:
@@ -483,6 +487,10 @@ Found by: the NoREC instance of the 12-hour campaign, round 12h-b, as
 an AFL++ crash (`CREATE TABLE v0 (CONSTRAINT x FOREIGN KEY (x, x) REFERENCES v0 ...)`
 and `ALTER TABLE v0 DROP c`).
 
+Issue: https://github.com/tursodatabase/turso/issues/11402 (open). Found
+again in the campaign of 2026-11-05: 2 of the 6 TLP crashes at 08:26 UTC
+(the same assertion at `core/translate/alter.rs:893:13`).
+
 ## 16. Casts that PostgreSQL does not have are accepted
 
 tursopg accepts a cast from a scalar to an array type when it prepares
@@ -564,7 +572,10 @@ and `bug_INDEX_f5a863c31d917ecc`. Batch of 07:23 UTC:
 `bug_INDEX_3baf49e8ce5bb04f`, `bug_INDEX_5b820570910445d8`,
 `bug_INDEX_84d1e9ae9f203339`, `bug_INDEX_a8b4bc05efe12c8d`,
 `bug_INDEX_af0e2c2ea71d0b7b`, `bug_INDEX_d3811504e87a81d9`,
-`bug_INDEX_d7f2464fad3d75bf` and `bug_INDEX_ffc19a13c686a9fb`.
+`bug_INDEX_d7f2464fad3d75bf` and `bug_INDEX_ffc19a13c686a9fb`. From
+07:24 to 07:26 UTC, one queue entry gave 90 more reports. In each, only
+run 0 prints `invalid timestamp value` (an index on `c::timestamptz`
+over a `text` column).
 
 ## 17. Crash: a multi-row VALUES list with rows of different lengths
 
@@ -607,7 +618,8 @@ Crashes `id:000005` (`op_real`), `id:000006` (`op_integer`) and
 `id:000007` (`op_string8`) have the same cause. So do `id:000009`
 (`op_real`) and `id:000011` (`op_string8`). Count at 07:23 UTC: 12 of
 the 80 NoREC crashes (`execute.rs` lines 5910, 6227 and 6257) and both
-TLP crashes have this cause.
+TLP crashes have this cause. Count at 08:26 UTC: 14 of the 221 NoREC
+crashes and 4 of the 6 TLP crashes.
 
 ## 18. integer / text column is accepted
 
@@ -756,7 +768,8 @@ under test (ff97c22), so the crash is fixed upstream.
 
 Count at 07:23 UTC: 64 of the 80 NoREC crashes have this panic. They
 came from one queue entry. AFL++ ran that entry again and again, and the
-NoREC instance lost about 30 minutes on it.
+NoREC instance lost about 30 minutes on it. Count at 08:26 UTC: 202 of
+the 221 NoREC crashes.
 
 ## 23. LIKE reads the whole string when the first characters differ
 
