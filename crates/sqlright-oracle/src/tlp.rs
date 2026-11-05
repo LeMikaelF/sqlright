@@ -188,6 +188,9 @@ impl Tlp {
         if tlp_type == TlpType::GroupBy && !Self::target_is_grouped(t, stmt) {
             return false;
         }
+        if !Self::having_fits_the_partitions(t, stmt, tlp_type) {
+            return false;
+        }
         // An aggregate inside an expression (`CASE WHEN count(*) = 1 ...`)
         // makes the whole table one group. The query returns one row, and
         // the partitioned form returns one row per partition.
@@ -210,6 +213,33 @@ impl Tlp {
         ir_wrapper::get_ir_node_in_stmt_with_type(t, stmt, IrType::GroupByItem, false)
             .iter()
             .any(|&item| squeeze(&t.to_string(item)) == target_text)
+    }
+
+    /// False when the HAVING clause can drop a group in a partition but
+    /// keep it in the whole query. Each partition keeps the HAVING clause,
+    /// and an aggregate in it sees only the rows of that partition. An
+    /// aggregate SELECT without GROUP BY is one group, so each HAVING
+    /// clause applies to the rows of the partition.
+    fn having_fits_the_partitions(t: &IrTree, stmt: IrId, tlp_type: TlpType) -> bool {
+        let havings: Vec<IrId> =
+            ir_wrapper::get_ir_node_in_stmt_with_type(t, stmt, IrType::HavingClause, false)
+                .into_iter()
+                .filter(|&h| !t.is_empty(h))
+                .collect();
+        if havings.is_empty() {
+            return true;
+        }
+        if matches!(
+            tlp_type,
+            TlpType::AggrCount
+                | TlpType::AggrSum
+                | TlpType::AggrMin
+                | TlpType::AggrMax
+                | TlpType::AggrAvg
+        ) {
+            return false;
+        }
+        !havings.iter().any(|&h| Self::has_aggregate_call(t, h))
     }
 
     /// True when the statement (not its subqueries) calls an aggregate function.
@@ -820,6 +850,25 @@ mod tests {
                 sqlright_mutator::ir_wrapper::get_first_stmt_from_root(&q.tree, q.root).unwrap();
             assert!(tlp.is_oracle_select_stmt(&mut q.tree, stmt), "{sql}");
         }
+    }
+
+    #[test]
+    fn rejects_a_having_clause_that_sees_one_partition() {
+        let tlp = Tlp;
+        for sql in [
+            "SELECT sum(c7) FROM v6 WHERE c7 = 1 HAVING max(c7) > 30;",
+            "SELECT max(c7) FROM v6 WHERE c7 = 1 HAVING 1 = 1;",
+            "SELECT c1 FROM v0 WHERE c1 > 0 GROUP BY c1 HAVING count(*) > 1;",
+        ] {
+            let mut q = sqlright_pg_parser::parse_query(sql).unwrap();
+            let stmt =
+                sqlright_mutator::ir_wrapper::get_first_stmt_from_root(&q.tree, q.root).unwrap();
+            assert!(!tlp.is_oracle_select_stmt(&mut q.tree, stmt), "{sql}");
+        }
+        let sql = "SELECT c1 FROM v0 WHERE c1 > 0 GROUP BY c1 HAVING c1 > 2;";
+        let mut q = sqlright_pg_parser::parse_query(sql).unwrap();
+        let stmt = sqlright_mutator::ir_wrapper::get_first_stmt_from_root(&q.tree, q.root).unwrap();
+        assert!(tlp.is_oracle_select_stmt(&mut q.tree, stmt), "{sql}");
     }
 
     #[test]
