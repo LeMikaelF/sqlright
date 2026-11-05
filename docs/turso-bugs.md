@@ -215,6 +215,7 @@ VALUES` and `... in UPDATE`. A comment on the issue already covers
 these forms:
 https://github.com/tursodatabase/turso/issues/11395#issuecomment-6648263299.
 Crashes `id:000010`, `id:000012` and `id:000015` are the same `VALUES` form.
+Count at 07:23 UTC: 4 of the 80 NoREC crashes have this panic.
 
 ## 8. ON CONFLICT DO UPDATE SET is not checked on a table without an index
 
@@ -394,6 +395,11 @@ Expected PostgreSQL behavior: the error
 
 Found by: the INDEX instance of the 12-hour campaign, round 12h-b, as
 an AFL++ crash (`SELECT make_date(TRUE, 4, 1453556443) FROM (VALUES ...)`).
+
+Issue: https://github.com/tursodatabase/turso/issues/11398. The INDEX
+instance of the campaign of 2026-11-05 found it again as crash
+`id:000000` (`make_date(2013, 2, 1534231376)`, the same panic at
+`chrono-0.4.42/src/naive/datetime/mod.rs:1635:38`).
 
 ## 13. make_date returns a blob
 
@@ -592,7 +598,9 @@ panics too. Comment:
 https://github.com/tursodatabase/turso/issues/11403#issuecomment-6649575149.
 Crashes `id:000005` (`op_real`), `id:000006` (`op_integer`) and
 `id:000007` (`op_string8`) have the same cause. So do `id:000009`
-(`op_real`) and `id:000011` (`op_string8`).
+(`op_real`) and `id:000011` (`op_string8`). Count at 07:23 UTC: 12 of
+the 80 NoREC crashes (`execute.rs` lines 5910, 6227 and 6257) and both
+TLP crashes have this cause.
 
 ## 18. integer / text column is accepted
 
@@ -734,6 +742,35 @@ The issue was closed at 06:32 UTC on 2026-11-05 by pull request
 https://github.com/tursodatabase/turso/pull/11423 (merged), which rejects
 types with more than 7 dimensions. The fix is newer than the turso commit
 under test (ff97c22), so the crash is fixed upstream.
+
+Count at 07:23 UTC: 64 of the 80 NoREC crashes have this panic. They
+came from one queue entry. AFL++ ran that entry again and again, and the
+NoREC instance lost about 30 minutes on it.
+
+## 23. LIKE reads the whole string when the first characters differ
+
+The statement below runs for longer than the 2-second statement limit
+of the harness. AFL++ saved it as a hang in the INDEX instance
+(`id:000001`, campaign of 2026-11-05).
+
+```sql
+INSERT INTO v0 (c1) VALUES (repeat('*', 537704593) LIKE repeat('?', 20000));
+```
+
+In tursopg, `repeat('*', 537704593)` takes 1.75 seconds.
+`repeat('*', 50000000) LIKE repeat('?', 20000)` takes about 1 second,
+and the time grows linearly with the length of the string. The pattern
+has no wildcard (`?` is not a wildcard in LIKE), and the first character
+differs. Thus, the result is false after one comparison.
+
+PostgreSQL 16.15 gives `f`. Most of its time goes to `repeat`:
+`length(repeat('*', 537704593))` takes 8.3 seconds, and the LIKE query
+takes 7.6 seconds in all. For 50,000,000 characters, `repeat` takes
+0.35 seconds and the LIKE query 0.30 seconds. Thus, the LIKE itself
+takes almost no time in PostgreSQL.
+
+The statement does not stop at the 2-second limit of the harness. This is
+a performance difference, not a wrong result. Issue: none.
 
 ## Campaign log
 
