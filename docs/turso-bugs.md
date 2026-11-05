@@ -120,6 +120,13 @@ value`; without the index the same query returns 0 rows.
 Found by: the NoREC oracle, round 3 (the only report of that round that
 was not a transaction-marker false positive).
 
+Variant, found by the EET oracle in the campaign of 2026-11-05: a plain
+`timestamp` column with a normal (not unique) index and an integer
+constant. `INSERT INTO v0 VALUES (1601)` stores `-4708-04-12 12:00:00`.
+Then `WHERE c2 = 1601` finds the row only through `CREATE INDEX ON v0 (c2)`,
+and `SELECT c2 = 1601` is false. The variant is a comment on issue 11386:
+https://github.com/tursodatabase/turso/issues/11386#issuecomment-6653231258
+
 Issue: https://github.com/tursodatabase/turso/issues/11386.
 Related: https://github.com/tursodatabase/turso/issues/11011 (the `c1 = 'abc'` case) and
 https://github.com/tursodatabase/turso/issues/11314 (tracking issue for comparisons and index lookups).
@@ -197,6 +204,9 @@ This is not finding 1. Finding 1 is a slice index panic in
 
 Found by: the NoREC oracle, 12-hour campaign. AFL++ saved it as a crash
 after 88 seconds (`SELECT count(*) FROM v0 WHERE c1 @> percentile_cont(c2, c1)`).
+The LATERAL oracle found it again in the campaign of 2026-11-05.
+
+Issue: https://github.com/tursodatabase/turso/issues/11395
 
 ## 8. ON CONFLICT DO UPDATE SET is not checked on a table without an index
 
@@ -491,6 +501,86 @@ comparison alone, with a comment that names the issue, so that the
 campaign can find other problems.
 
 Issue: https://github.com/tursodatabase/turso/issues/11415
+
+## 18. Crash: CREATE TABLE with 8 array dimensions
+
+A column type with 8 `[]` panics in `CREATE TABLE`. A type with 7 `[]`
+works. The panic also occurs with a domain as the base type.
+
+```sql
+CREATE TABLE v3 (c4 INT[][][][][][][][]);
+```
+
+```text
+thread 'main' panicked at core/schema.rs:10746:13:
+array dimensions must be <= 7
+```
+
+The call path is `apply_written_type`, then `set_array_dimensions`.
+
+Expected PostgreSQL behavior: PostgreSQL does not use the number of
+dimensions of a declared column type, so the statement works. If turso
+keeps a limit of 7, it must return an error and not panic.
+
+Related: https://github.com/tursodatabase/turso/issues/10851 (the same
+limit when turso opens a database made by SQLite).
+
+Found by: the DQE oracle, as an AFL++ crash after 30 minutes. The EET
+instance found it again (46 crashes in all).
+
+Issue: https://github.com/tursodatabase/turso/issues/11416
+
+## 19. Crash: UPDATE of a primary key column when WHERE names a RETURNING alias
+
+An UPDATE that changes a column of a composite primary key panics when
+the WHERE clause uses a name that is only an output alias of RETURNING.
+
+```sql
+CREATE TABLE v0 (c1 INT, c2 INT, c3 INT, PRIMARY KEY (c1, c2));
+UPDATE v0 SET c1 = 6 WHERE a5 = 2 RETURNING c3 AS a5;
+```
+
+```text
+thread 'main' panicked at core/translate/expr/translator.rs:2626:33:
+column 2 of table t1 is not stored in the index and the table cursor is not open
+```
+
+The panic needs all of these: `SET` changes a primary key column, WHERE
+uses the alias, and the alias is for a column that is not in the primary
+key. It does not occur with `SET c3 = 6`, with `RETURNING c2 AS a5`, with
+a table without a primary key, or with a `SELECT`.
+
+Expected PostgreSQL behavior: the error `column "a5" does not exist`.
+
+Found by: the LATERAL oracle, as two AFL++ crashes (the statement is in
+the setup of the test case).
+
+Issue: https://github.com/tursodatabase/turso/issues/11421
+
+## 20. A text constant and a `timestamp` column: table scan and index disagree
+
+A `timestamp` column compared with a text constant that has no time part
+is false in a table scan and true through an index.
+
+```sql
+CREATE TABLE v0 (c2 TIMESTAMP);
+INSERT INTO v0 VALUES ('2026-10-08');
+SELECT c2 = '2026-10-08' FROM v0;                    -- 0
+SELECT c2 = '2026-10-08'::timestamp FROM v0;         -- 1
+SELECT count(*) FROM v0 WHERE c2 = '2026-10-08';     -- 0
+CREATE INDEX ON v0 (c2);
+SELECT count(*) FROM v0 WHERE c2 = '2026-10-08';     -- 1
+```
+
+The scan compares the stored text `2026-10-08 00:00:00` with the text of the
+constant. Expected PostgreSQL behavior: every query gives 1.
+
+Found by: the EET oracle. A CASE around the predicate turns the index
+lookup into an expression, and the two forms return different rows. This
+is a variant of an open issue, so it is a comment:
+https://github.com/tursodatabase/turso/issues/11011#issuecomment-6655290026
+
+Issue: https://github.com/tursodatabase/turso/issues/11011
 
 ## Campaign log
 

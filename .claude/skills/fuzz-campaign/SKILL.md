@@ -88,7 +88,12 @@ free memory. Look for:
 - `crashes` in `default/crashes/`: a panic in turso. The most valuable finding.
 - `hangs` in `default/hangs/`: a statement that does not finish.
 - `reports` in `bugs/bug_*.sql`: an oracle found two results that differ.
-- Less than 2 GB of free memory: find the process and stop it.
+- Less than 2 GB of free memory: find the process and stop it. If the
+  `afl-fuzz` process itself grows by gigabytes, a queue entry with long
+  literals makes very large cases (`SQLRIGHT_MAX_BYTES` limits this).
+- A very low execution rate: the instance works on a queue entry whose
+  cases take seconds. Restart it with `--timeout-ms 3000` through
+  `sqlright run`. Slow cases then count as hangs and do not enter the queue.
 - Fewer than three afl-fuzz processes: restart the missing one.
 
 ## 4. Triage
@@ -126,12 +131,15 @@ H=$PWD/crates/sqlright-harness-tursopg/target/release/sqlright-harness-tursopg
        forms are valid PostgreSQL; decide with the PostgreSQL semantics.
      - DQE: a trigger, a foreign key with `ON DELETE`, or a statement
        between the forms that changes the table. The three forms must
-       run on the same rows.
+       run on the same rows. Every pair must have three forms: a pair
+       with two forms shifts the result blocks of every later pair.
      - LATERAL: a selected column whose values do not survive the JSON
        round trip (see `survives_json` in `lateral.rs`), a comparison of
        two types that convert differently in the two forms, or a
        subquery whose rows depend on the plan (DISTINCT or LIMIT without
-       an ORDER BY on every column).
+       an ORDER BY on every column), or a table made by `CREATE TABLE AS
+       SELECT`: tursopg gives its columns no type, so the declared type
+       of the form is not the type of the stored values.
      Fix the oracle in `crates/sqlright-oracle`, add a unit test, run
      `cargo fmt`, `cargo test --release` and `cargo clippy --release
      --workspace --all-targets`. Commit the fix on a branch, open a pull
