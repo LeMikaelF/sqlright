@@ -9,7 +9,7 @@ use clap::Args;
 
 #[derive(Args, Debug)]
 pub struct RunArgs {
-    /// The oracle: NOREC, TLP or INDEX.
+    /// The oracle: NOREC, TLP, INDEX, EET, DQE or LATERAL.
     #[arg(long, default_value = "NOREC")]
     pub oracle: String,
     /// The harness binary, built with `cargo afl build --release`.

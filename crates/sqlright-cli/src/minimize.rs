@@ -84,29 +84,22 @@ impl Minimizer<'_> {
         Ok(verdict == OraCompRes::Fail)
     }
 
-    /// Remove whole oracle groups (a pair of result blocks for NOREC and
-    /// TLP, one block for INDEX) while the case still fails. The blocks of
-    /// a pair are numbered 0 and 1 in every pair, so a block is identified
-    /// by its position, not by its number.
+    /// Remove whole oracle groups while the case still fails. A group is
+    /// the result blocks of one oracle SELECT: the block numbered 0 and
+    /// the blocks after it up to the next block numbered 0 (two blocks for
+    /// NOREC, TLP, EET and LATERAL, three for DQE, one for INDEX). A block
+    /// is identified by its position, not by its number.
     fn remove_oracle_groups(&mut self, runs: &mut Runs) -> Result<()> {
-        let group_size = if self.engine.oracle.mul_run_num() > 1 {
-            1
-        } else {
-            2
-        };
         loop {
-            let block_count = block_spans(&runs[0]).len();
-            if block_count <= group_size {
+            let groups = block_groups(&runs[0]);
+            if groups.len() <= 1 {
                 return Ok(());
             }
             let mut changed = false;
-            let group_count = block_count.div_ceil(group_size);
-            for group in (0..group_count).rev() {
-                let ordinals: Vec<usize> =
-                    (group * group_size..((group + 1) * group_size).min(block_count)).collect();
+            for ordinals in groups.iter().rev() {
                 let candidate: Runs = runs
                     .iter()
-                    .map(|r| remove_blocks_by_ordinal(r, &ordinals))
+                    .map(|r| remove_blocks_by_ordinal(r, ordinals))
                     .collect();
                 if self.still_fails(&candidate)? {
                     *runs = candidate;
@@ -298,6 +291,25 @@ fn block_spans(run: &[String]) -> Vec<(usize, usize)> {
     spans
 }
 
+/// The positions of the result blocks of each oracle SELECT: a block
+/// numbered 0 starts a group, the blocks after it belong to it.
+fn block_groups(run: &[String]) -> Vec<Vec<usize>> {
+    let mut groups: Vec<Vec<usize>> = Vec::new();
+    for (ordinal, s) in run
+        .iter()
+        .filter_map(|s| marker(s))
+        .filter(|(begin, _)| *begin)
+        .enumerate()
+    {
+        if s.1 == 0 || groups.is_empty() {
+            groups.push(vec![ordinal]);
+        } else {
+            groups.last_mut().expect("a group").push(ordinal);
+        }
+    }
+    groups
+}
+
 /// The run without the blocks at these positions (markers included).
 fn remove_blocks_by_ordinal(run: &[String], ordinals: &[usize]) -> Vec<String> {
     let spans = block_spans(run);
@@ -365,6 +377,7 @@ mod tests {
         .map(|s| s.to_string())
         .collect();
         assert_eq!(block_spans(&run), vec![(1, 3), (4, 6), (7, 9), (10, 12)]);
+        assert_eq!(block_groups(&run), vec![vec![0, 1], vec![2, 3]]);
         assert_eq!(free_statement_indexes(&run), vec![0]);
         let smaller = remove_blocks_by_ordinal(&run, &[0, 1]);
         assert_eq!(
@@ -379,6 +392,38 @@ mod tests {
                 "SELECT 'END VERI 1'"
             ]
         );
+    }
+
+    #[test]
+    fn groups_three_blocks_per_select_and_one_per_run() {
+        let run: Vec<String> = [
+            "SELECT 'BEGIN VERI 0'",
+            "SELECT 'END VERI 0'",
+            "SELECT 'BEGIN VERI 1'",
+            "SELECT 'END VERI 1'",
+            "SELECT 'BEGIN VERI 2'",
+            "SELECT 'END VERI 2'",
+            "SELECT 'BEGIN VERI 0'",
+            "SELECT 'END VERI 0'",
+            "SELECT 'BEGIN VERI 1'",
+            "SELECT 'END VERI 1'",
+            "SELECT 'BEGIN VERI 2'",
+            "SELECT 'END VERI 2'",
+        ]
+        .iter()
+        .map(|s| s.to_string())
+        .collect();
+        assert_eq!(block_groups(&run), vec![vec![0, 1, 2], vec![3, 4, 5]]);
+        let index_run: Vec<String> = [
+            "SELECT 'BEGIN VERI 0'",
+            "SELECT 'END VERI 0'",
+            "SELECT 'BEGIN VERI 0'",
+            "SELECT 'END VERI 0'",
+        ]
+        .iter()
+        .map(|s| s.to_string())
+        .collect();
+        assert_eq!(block_groups(&index_run), vec![vec![0], vec![1]]);
     }
 
     #[test]

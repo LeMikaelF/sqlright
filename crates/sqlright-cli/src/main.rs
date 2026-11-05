@@ -38,7 +38,7 @@ enum Command {
     Mutate {
         /// The seed: a SQL file.
         seed: PathBuf,
-        /// The oracle: NOREC, TLP or INDEX.
+        /// The oracle: NOREC, TLP, INDEX, EET, DQE or LATERAL.
         #[arg(long, default_value = "NOREC")]
         oracle: String,
         /// A directory of SQL files for the mutation library (repeatable).
@@ -61,7 +61,7 @@ enum Command {
     Replay {
         /// The test case: a SQL file with result markers.
         case: PathBuf,
-        /// The oracle: NOREC, TLP or INDEX.
+        /// The oracle: NOREC, TLP, INDEX, EET, DQE or LATERAL.
         #[arg(long, default_value = "NOREC")]
         oracle: String,
         /// The harness binary.
@@ -78,7 +78,7 @@ enum Command {
     Minimize {
         /// The test case: a SQL file with result markers.
         case: PathBuf,
-        /// The oracle: NOREC, TLP or INDEX.
+        /// The oracle: NOREC, TLP, INDEX, EET, DQE or LATERAL.
         #[arg(long, default_value = "NOREC")]
         oracle: String,
         /// The harness binary.
