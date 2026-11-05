@@ -238,8 +238,9 @@ of the first tursopg campaigns were: a non-boolean WHERE expression that
 tursopg accepts (NoREC), window functions taken for aggregates (TLP), and
 `count(*) FILTER (...)` (NoREC), lost result markers after a failed
 statement in a transaction block (NoREC), a grouped SELECT whose target
-is not a grouping expression (TLP), and one value printed as a double and
-as an integer (TLP). Each was a SQLRight problem and
+is not a grouping expression (TLP), one value printed as a double and
+as an integer (TLP), and a marker literal (`SELECT 'BEGIN VERI 0' FROM v0`)
+that came from the markers of a queue entry into the library (TLP). Each was a SQLRight problem and
 was fixed at its source, not by filtering reports. A flood that is a real database
 bug gets one entry in `docs/turso-bugs.md` with a minimal reproducer.
 
