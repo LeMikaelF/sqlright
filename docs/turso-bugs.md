@@ -210,6 +210,7 @@ panic occurs in a `VALUES` list and in `UPDATE ... SET`:
 VALUES` and `... in UPDATE`. A comment on the issue already covers
 these forms:
 https://github.com/tursodatabase/turso/issues/11395#issuecomment-6648263299.
+Crash `id:000010` is the same `VALUES` form.
 
 ## 8. ON CONFLICT DO UPDATE SET is not checked on a table without an index
 
@@ -244,7 +245,11 @@ is compiled only with an index) and
 https://github.com/tursodatabase/turso/issues/9664 (unknown name in
 DO UPDATE). Found again on 2026-11-05 (`bug_INDEX_7bdd7c2ec31c66e2`,
 `bug_INDEX_1988eb367ad99269`, `bug_INDEX_707f3d23a099f49f`,
-`bug_INDEX_ee0a950fc16e90b4`).
+`bug_INDEX_ee0a950fc16e90b4`). At 06:20 UTC, 152 reports with
+`SET fruit` came from one queue entry. Later forms: `SET level1_no`
+(`bug_INDEX_4cb878e594f11cd4`, `bug_INDEX_cd71494ab578e117`),
+`SET value` (`bug_INDEX_81b8b3f09cc3f7e9`) and `SET a`
+(`bug_INDEX_d2523676375ffab9`).
 
 A flood: from 05:20 to 05:22 UTC the INDEX instance wrote 150 reports
 in 2 minutes. All 150 hold `ON CONFLICT DO UPDATE SET fruit = ...`. They
@@ -341,6 +346,23 @@ rejects the first query with `HAVING clause on a non-aggregate query`.
 
 Found by: the TLP oracle, 12-hour campaign, round 12h-b
 (`SELECT * FROM v0 HAVING sum(c2) > v0.c2 * 'c'` against its partition on `oid = 1`).
+
+The INDEX oracle found it again on 2026-11-05 (`bug_INDEX_5b5dffcf76239dca`).
+A lookup on the primary key keeps the bare column. A seek in a covering
+index on `(a, b)` gives NULL, as a table scan does:
+
+```sql
+CREATE TABLE t (a serial PRIMARY KEY, b serial);
+INSERT INTO t (a) VALUES (0);
+SELECT b IS NULL FROM t WHERE a = 0 HAVING count(*) >= 1;   -- tursopg: 0
+CREATE INDEX ti ON t (a, b);
+SELECT b IS NULL FROM t WHERE a = 0 HAVING count(*) >= 1;   -- tursopg: 1
+```
+
+Related open issue: https://github.com/tursodatabase/turso/issues/7977
+(HAVING without GROUP BY that references a bare column). Comment on the
+index variant:
+https://github.com/tursodatabase/turso/issues/7977#issuecomment-6651332885.
 
 ## 12. Crash: make_date with a very large day number
 
@@ -510,6 +532,22 @@ Later reports with the same cause: `bug_INDEX_bbc9601b7afe661c`,
 `bug_INDEX_6d3ee45d508cab11`, `bug_INDEX_b9b3ee67c76aab29` (`timestamp[]`),
 `bug_INDEX_bd796b14562b09d3`, `bug_INDEX_d0dc3b970ef3a7b5` (`tsvector[]`),
 `bug_INDEX_e01e6b4b1d4cbab2` and `bug_INDEX_eb5535a58eb9f671`.
+Batch of 06:20 UTC (also `regtype[]`, `money[]` and `time[]`):
+`bug_INDEX_097c57d8ea9b2a30`, `bug_INDEX_1676d9f9c4d2342d`,
+`bug_INDEX_1787adeff7623e45`, `bug_INDEX_36dcd46666b0997d`,
+`bug_INDEX_371047019e85a14c`, `bug_INDEX_397490e880af715c`,
+`bug_INDEX_3c0a35529a243bba`, `bug_INDEX_42ffcff08ed1c71d`,
+`bug_INDEX_45330038d03d0e2d`, `bug_INDEX_69b536c6242891ea`,
+`bug_INDEX_79a2360bf2c14f5d`, `bug_INDEX_95946abf665467d0`,
+`bug_INDEX_a525254bf75efc69`, `bug_INDEX_aae019dab4c487f6`,
+`bug_INDEX_afc10e330c47ad3a`, `bug_INDEX_b045992133f28f1c`,
+`bug_INDEX_b2740e0160220d7d`, `bug_INDEX_b658605ada52f231`,
+`bug_INDEX_bafb5dab90011dea`, `bug_INDEX_c0de3a35a5f08930`,
+`bug_INDEX_c36ec4c08adc2d04`, `bug_INDEX_ce0bf51be4bd907c`,
+`bug_INDEX_ce1f47eea94e7841`, `bug_INDEX_db3b5a00aa1ca909`,
+`bug_INDEX_dd8598a8ff806d69`, `bug_INDEX_eb50c76f8c5d2992`,
+`bug_INDEX_ee95f7a9f92094b2`, `bug_INDEX_f24076df1227cdb6` (`timestamptz`)
+and `bug_INDEX_f5a863c31d917ecc`.
 
 ## 17. Crash: a multi-row VALUES list with rows of different lengths
 
@@ -549,8 +587,8 @@ panics in `op_real` (`core/vdbe/execute.rs:6227`). The other is a bare
 panics too. Comment:
 https://github.com/tursodatabase/turso/issues/11403#issuecomment-6649575149.
 Crashes `id:000005` (`op_real`), `id:000006` (`op_integer`) and
-`id:000007` (`op_string8`) have the same cause. So does `id:000009`
-(`op_real`).
+`id:000007` (`op_string8`) have the same cause. So do `id:000009`
+(`op_real`) and `id:000011` (`op_string8`).
 
 ## 18. integer / text column is accepted
 
@@ -575,7 +613,11 @@ has `1 / c1` on a `serial` column and `INSERT ... VALUES ('0.0')`.
 tursopg stores `'0.0'` as `0` in an integer column. PostgreSQL rejects
 it (`invalid input syntax for type integer: "0.0"`), close to
 https://github.com/tursodatabase/turso/issues/10263. Crash `id:000004`
-is finding 17 again.
+is finding 17 again. Batch of 06:20 UTC: `bug_INDEX_01ab37bf0fd3927f`
+and `bug_INDEX_be4170a2959fde02` (`1 / c`), and
+`bug_INDEX_21eb0c518ab6193f`. The last one has a partial index
+`WHERE v0.c2 / '1 year'` on a `text` column. Every insert then fails
+with `invalid input syntax for type numeric: "1 year"`.
 
 Issue: a variant of https://github.com/tursodatabase/turso/issues/11387.
 Comment:
@@ -621,7 +663,10 @@ Expected PostgreSQL behavior: `CREATE INDEX` fails with
 `column "oid" does not exist`.
 
 Found by: the INDEX oracle, campaign of 2026-11-05
-(`bug_INDEX_b7f64e48f26695ac`).
+(`bug_INDEX_b7f64e48f26695ac`). Later: `bug_INDEX_1704168220bbe1f5`
+(`oid = 70`), and `WHERE oid LIKE '"%"'` in `bug_INDEX_97d76fc4b07760f5`,
+`bug_INDEX_9bf29920b7cb4c9f`, `bug_INDEX_9dae627b38f5a1f3` and
+`bug_INDEX_c3b093f37a41c17f`.
 
 Issue: a variant of https://github.com/tursodatabase/turso/issues/9663
 (the same problem with `rowid`). Comment:
