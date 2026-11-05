@@ -99,7 +99,10 @@ INSERT INTO v1 VALUES (0);
 SELECT count(*) FROM v1 WHERE c1 = 0;  -- 0                  (no index: consistent with the expression)
 ```
 
-The same happens with a `UNIQUE` index instead of the primary key. With a
+The same happens with a `UNIQUE` index instead of the primary key. The
+same happens with a `time` column: `INSERT INTO v0 VALUES (0)` stores
+`12:00:00`, `c1 = 0` is false as an expression, and the index finds the
+row (12-hour campaign, round 12h-b, NoREC). With a
 valid date (`INSERT INTO v0 VALUES ('2024-01-02')`) both forms agree.
 PostgreSQL rejects the insert (`column "c1" is of type date but expression
 is of type integer`), so the first problem is the accepted insert; given
