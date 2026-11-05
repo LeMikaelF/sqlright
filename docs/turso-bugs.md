@@ -122,7 +122,8 @@ A `jsonb` primary key does the same: after `INSERT INTO t VALUES (1), (2), (6)`,
 `'1.2345678901234e-200'` in an indexed `timestamptz` column does the same (two
 TLP reports of camp-tlp2, 2026-11-05). A `TIMESTAMP` primary key with
 `INSERT ... VALUES (2, ...)` does the same (the first NoREC report of that
-campaign, `bug_NOREC_64871ceb9d417f2f`). With a
+campaign, `bug_NOREC_64871ceb9d417f2f`). The first camp-index3 report
+(`bug_INDEX_743ddb801784aa92`) is the `date` case with `WHERE c10 = '30'`. With a
 valid date (`INSERT INTO v0 VALUES ('2024-01-02')`) both forms agree.
 PostgreSQL rejects the insert (`column "c1" is of type date but expression
 is of type integer`), so the first problem is the accepted insert; given
@@ -446,6 +447,8 @@ an AFL++ crash (`CREATE TABLE v0 (CONSTRAINT x FOREIGN KEY (x, x) REFERENCES v0 
 and `ALTER TABLE v0 DROP c`).
 
 Issue: https://github.com/tursodatabase/turso/issues/11402
+camp-tlp3 crash 000000 (src 002806) is the same assertion
+(`CREATE TABLE v0 (FOREIGN KEY (x, x) REFERENCES v0 (x, x))`, then `ALTER TABLE v0 DROP COLUMN c3`).
 
 ## 16. LIKE on a long string uses about 5 times its size in memory
 
