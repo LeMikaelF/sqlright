@@ -251,7 +251,8 @@ Crashes `id:000010`, `id:000012` and `id:000015` are the same `VALUES` form.
 Count at 07:23 UTC: 4 of the 80 NoREC crashes have this panic. Count at
 08:26 UTC: 5 of the 221 NoREC crashes. Count at 09:28 UTC: 5 of the 273
 NoREC crashes. Count at 10:32 UTC: 5 of the 347 NoREC crashes. Count at
-11:40 UTC: 5 of the 423 NoREC crashes.
+11:40 UTC: 5 of the 423 NoREC crashes. Count at 12:44 UTC: 5 of the 460
+NoREC crashes.
 
 ## 8. ON CONFLICT DO UPDATE SET is not checked on a table without an index
 
@@ -300,6 +301,8 @@ DO UPDATE). Found again on 2026-11-05 (`bug_INDEX_7bdd7c2ec31c66e2`,
 the harness timeout; the fixed build gives ERROR),
 `bug_INDEX_3667624ba05fd815`, `bug_INDEX_39da718980ce4a7b` and
 `bug_INDEX_f9f9bd32753072b6`. Batch of 11:08 UTC: `bug_INDEX_27033558ab1b9507`.
+Batch of 12:44 UTC: `bug_INDEX_aabecadeb6316adc` (`SET testns5`) and
+`bug_INDEX_ceecbfda15cfd8b8` (`SET b`).
 
 A flood: from 05:20 to 05:22 UTC the INDEX instance wrote 150 reports
 in 2 minutes. All 150 hold `ON CONFLICT DO UPDATE SET fruit = ...`. They
@@ -458,6 +461,7 @@ instance of the campaign of 2026-11-05 found it again as crash
 1 of the 273 NoREC crashes and 1 of the 2 INDEX crashes. Count at
 10:32 UTC: 1 of the 347 NoREC crashes and 1 of the 2 INDEX crashes. Count
 at 11:40 UTC: 1 of the 423 NoREC crashes and 1 of the 2 INDEX crashes.
+Count at 12:44 UTC: 1 of the 460 NoREC crashes and 1 of the 4 INDEX crashes.
 
 ## 13. make_date returns a blob
 
@@ -543,7 +547,8 @@ Issue: https://github.com/tursodatabase/turso/issues/11402 (open). Found
 again in the campaign of 2026-11-05: 2 of the 6 TLP crashes at 08:26 UTC
 (the same assertion at `core/translate/alter.rs:893:13`). Count at
 09:28 UTC: 2 of the 8 TLP crashes. Count at 11:40 UTC: 2 of the 12 TLP
-crashes and 1 of the 423 NoREC crashes.
+crashes and 1 of the 423 NoREC crashes. Count at 12:44 UTC: 2 of the 15
+TLP crashes and 1 of the 460 NoREC crashes.
 
 ## 16. Casts that PostgreSQL does not have are accepted
 
@@ -659,7 +664,17 @@ rejects as not IMMUTABLE): `bug_INDEX_23b876800dbb1b7a`,
 11:40 UTC: `bug_INDEX_1017e3dfefa8a80c`, `bug_INDEX_28580378d46921fc`,
 `bug_INDEX_6a9245f1441f5162`, `bug_INDEX_c34786fe8556c395` (`time`),
 `bug_INDEX_e7901a91c92ddecd` and `bug_INDEX_eb8c8c99ee808bbd`
-(`tsvector[]`).
+(`tsvector[]`). Batch of 12:44 UTC (20 reports): `bug_INDEX_0b009486b262eb67`,
+`bug_INDEX_11a67d34c3887bae`, `bug_INDEX_2138a54beb3c0962`,
+`bug_INDEX_3475ef24215cb36f`, `bug_INDEX_37aab0f46592f459`,
+`bug_INDEX_45af8e15f7adaec3`, `bug_INDEX_4638c20414e1e387`,
+`bug_INDEX_47ca6eb546e27e56`, `bug_INDEX_4ab9f67dfbf05ac8`,
+`bug_INDEX_4cc3d3d32d698a56`, `bug_INDEX_7f5a638feb83cf7c`,
+`bug_INDEX_964f84e81de98c94`, `bug_INDEX_b3816d079ee29aa0`,
+`bug_INDEX_b3ab979bead312c1`, `bug_INDEX_bc613faade1e75ba`,
+`bug_INDEX_bfb03c7dd11f3cad`, `bug_INDEX_cd3d763521359955` (`time`),
+`bug_INDEX_d11013f6f7cb58ce`, `bug_INDEX_d3cd98e9be51d0fa` and
+`bug_INDEX_e3f53ae14b10c18d` (`timestamptz`).
 
 ## 17. Crash: a multi-row VALUES list with rows of different lengths
 
@@ -709,7 +724,8 @@ NoREC crashes (15 at the three known lines and 3 more `VALUES` forms),
 Count at 10:32 UTC: 18 of the 347 NoREC crashes (15 plus 3 more `VALUES`
 forms), 5 of the 8 TLP crashes and 1 of the 2 INDEX crashes. Count at
 11:40 UTC: 15 of the 423 NoREC crashes, 7 of the 12 TLP crashes and 1 of
-the 2 INDEX crashes.
+the 2 INDEX crashes. Count at 12:44 UTC: 15 of the 460 NoREC crashes, 10
+of the 15 TLP crashes and 1 of the 4 INDEX crashes.
 
 ## 18. integer / text column is accepted
 
@@ -883,7 +899,8 @@ NoREC instance lost about 30 minutes on it. Count at 08:26 UTC: 202 of
 the 221 NoREC crashes. Count at 09:28 UTC: 249 of the 273 NoREC crashes
 and 1 of the 8 TLP crashes. Count at 10:32 UTC: 323 of the 347 NoREC
 crashes and 1 of the 8 TLP crashes. Count at 11:40 UTC: 397 of the 423
-NoREC crashes and 3 of the 12 TLP crashes.
+NoREC crashes and 3 of the 12 TLP crashes. Count at 12:44 UTC: 435 of the
+460 NoREC crashes and 3 of the 15 TLP crashes.
 
 ## 23. LIKE reads the whole string when the first characters differ
 
@@ -939,6 +956,9 @@ Two more NoREC hangs build a long string with `lpad` in a multi-row
   (851 MB).
 - TLP `id:000001`: statement 38, `SELECT lpad('::4:3:2:0/24', '353316075') FROM v6`
   (353 MB).
+- TLP `id:000002`: statement 5, an `INSERT INTO v0 VALUES (...)` with
+  many `inet` values, one of which is `repeat('[', 974689908) || repeat(']', 1000)::inet`
+  (975 MB).
 
 In PostgreSQL 16.15, `lpad('hi', 529537728, '*')` fails at once with
 `requested length too large`. A length of 268,435,455 fails the same way.
@@ -988,6 +1008,40 @@ Issue: a variant of https://github.com/tursodatabase/turso/issues/8337
 (the cast side of the int4 range check; #10442 is the column side).
 Comment:
 https://github.com/tursodatabase/turso/issues/8337#issuecomment-6656463096.
+
+## 26. avg() and sum() over a moving frame stay NULL after an infinite value leaves it
+
+```sql
+SELECT n, avg(x) OVER (ORDER BY n ROWS BETWEEN CURRENT ROW AND CURRENT ROW)
+FROM (VALUES (1, 1e308 * 10), (2, 1.0), (3, 1.0)) AS v(n, x);
+```
+
+```text
+thread 'main' panicked at core/vdbe/execute.rs:9145:13:
+Avg xInverse without matching xStep
+```
+
+With `ROWS BETWEEN 1 PRECEDING AND CURRENT ROW` and the values
+`Inf, 1, 2, 4`, `sum` and `avg` give NULL for rows 3 and 4 and do not
+panic. PostgreSQL 16.15 (with `'Infinity'::float8`) gives
+`Infinity, Infinity, 3, 6` for `sum` and `Infinity, Infinity, 1.5, 3`
+for `avg`.
+
+When `Inf` leaves the frame, the inverse step computes `Inf + (-Inf)`.
+The result is NaN, and `apply_kbn_step` (`core/vdbe/execute.rs`) makes
+the sum NULL for good. For `avg`, the next step returns early on a NULL
+sum and does not increase the count, but the inverse step decreases it.
+The count reaches 0, and the `debug_assert!` in `inverse_agg_payload`
+fails. A build without debug assertions gives wrong values instead (not
+tested). In tursopg, `'Infinity'::float8` gives `0.0`, so the
+reproducer uses `1e308 * 10`.
+
+Found by: the INDEX instance, campaign of 2026-11-05, as AFL++ crashes
+`id:000002` and `id:000003` (`avg(c2) OVER (ORDER BY ... RANGE BETWEEN
+... FOLLOWING AND ... FOLLOWING)` on a `text` column with the value
+`'10e400'`).
+
+Issue: https://github.com/tursodatabase/turso/issues/11469.
 
 ## Campaign log
 
