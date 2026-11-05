@@ -15,6 +15,8 @@ findings that no existing issue covered: #11385 (finding 1), #11386
 Issues #11395 to #11408 came from the 12-hour campaign of 2026-11-05.
 #11403 (a VALUES row with a different length) and #11408 (casts that
 PostgreSQL does not have) have no entry in this file.
+NOREC crash 000000 (src 002220) of that campaign is #11403: a longer VALUES row
+panics in `op_string8` (`index out of bounds: the len is 9 but the index is 9`).
 
 ## 1. Crash: extension aggregate in a GROUP BY query
 
@@ -503,6 +505,10 @@ Related: https://github.com/tursodatabase/turso/issues/10618 (an untyped literal
   compares the wrong blocks. The instantiation step takes this literal
   from the marker statements. One TLP report of the same campaign had
   this cause. With the literal changed, the test case passes.
+  A second TLP report (`bug_TLP_d7f1618f37722191`) had the same cause. The
+  engine now removes the marker statements of a queue entry before it adds
+  the entry to the mutation library. A running instance uses the fix only
+  after a restart with a rebuilt `libsqlright_afl.so`.
 
 ## Campaign log
 

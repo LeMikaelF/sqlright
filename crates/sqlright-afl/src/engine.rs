@@ -170,8 +170,8 @@ impl Engine {
     /// Add one queue entry (a saved test case) to the library, like the
     /// SQLite variant does for every interesting input.
     pub fn add_queue_entry(&mut self, text: &str) {
-        let seed = Self::first_run(text);
-        let Some(mut q) = parse_query(seed) else {
+        let seed = without_result_markers(Self::first_run(text));
+        let Some(mut q) = parse_query(&seed) else {
             return;
         };
         let stripped = self.mutator.extract_struct(&mut q.tree, q.root);
@@ -515,9 +515,73 @@ pub fn is_non_deterministic(input: &str) -> bool {
         || input.lines().any(|l| l.trim_start().starts_with('!'))
 }
 
+/// The test case without its result marker statements
+/// (`SELECT 'BEGIN VERI n';` and `SELECT 'END VERI n';`). A saved queue entry
+/// holds them. In the library, their string literals go into other
+/// statements. Then a row such as `END VERI 1` looks like a marker in the
+/// output, and the oracle compares the wrong blocks.
+fn without_result_markers(text: &str) -> String {
+    let mut out = String::with_capacity(text.len());
+    for line in text.lines() {
+        if !is_result_marker_stmt(line) {
+            out.push_str(line);
+            out.push('\n');
+        }
+    }
+    out
+}
+
+fn is_result_marker_stmt(line: &str) -> bool {
+    let Some(inner) = line
+        .trim()
+        .strip_prefix("SELECT '")
+        .and_then(|s| s.strip_suffix("';"))
+    else {
+        return false;
+    };
+    let Some(number) = inner
+        .strip_prefix("BEGIN VERI ")
+        .or_else(|| inner.strip_prefix("END VERI "))
+    else {
+        return false;
+    };
+    !number.is_empty() && number.bytes().all(|b| b.is_ascii_digit())
+}
+
 #[cfg(test)]
 mod tests {
     use super::*;
+
+    #[test]
+    fn queue_entry_markers_do_not_go_into_the_library() {
+        let mut engine = Engine::new(test_config("TLP"), 1).unwrap();
+        let entry = "CREATE TABLE v0 (c1 INT, c2 TEXT); \nSELECT 'BEGIN VERI 0'; \nSELECT c1 FROM v0 WHERE c2 = 'kept'; \nSELECT 'END VERI 0'; \nSELECT 'BEGIN VERI 1'; \nSELECT c1 FROM v0 WHERE c2 = 'kept' UNION ALL SELECT c1 FROM v0 WHERE NOT (c2 = 'kept'); \nSELECT 'END VERI 1'; \n";
+        engine.add_queue_entry(entry);
+        let texts: Vec<&str> = engine
+            .mutator
+            .real_ir_set
+            .values()
+            .flatten()
+            .map(|e| e.query.as_ref())
+            .collect();
+        assert!(
+            texts.iter().any(|q| q.contains("'kept'")),
+            "the other statements are in the library: {texts:?}"
+        );
+        assert!(
+            !texts.iter().any(|q| q.contains("VERI")),
+            "a marker is in the library: {texts:?}"
+        );
+    }
+
+    #[test]
+    fn only_marker_statements_are_removed() {
+        let text = "SELECT 'BEGIN VERI 0'; \nSELECT 'END VERI 1' AS a FROM t; \nSELECT 'END VERI 12';\nSELECT 'END VERI x';\n";
+        assert_eq!(
+            without_result_markers(text),
+            "SELECT 'END VERI 1' AS a FROM t; \nSELECT 'END VERI x';\n"
+        );
+    }
 
     fn test_config(oracle: &str) -> Config {
         let dir = std::env::temp_dir().join(format!(
