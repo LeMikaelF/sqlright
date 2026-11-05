@@ -198,6 +198,10 @@ not necessary.
 Expected PostgreSQL behavior: the error `aggregate functions are not
 allowed in WHERE`.
 
+The WHERE clause of DELETE and UPDATE panics too, and so does the window
+form `median(a) OVER ()` in WHERE (NoREC crash 000002, comment
+https://github.com/tursodatabase/turso/issues/11395#issuecomment-6650104597).
+
 This is not finding 1. Finding 1 is a slice index panic in
 `ExtFunc::step_aggregate` with GROUP BY.
 
@@ -465,6 +469,7 @@ A longer pattern aborts the process under a 4 GB memory limit:
 https://github.com/tursodatabase/turso/issues/11411#issuecomment-6649235187
 INDEX crashes 000004 to 000006 (src 002167) are the same abort, with an operand of more than 700 million characters on either side of LIKE.
 INDEX hangs 000002 and 000003 (src 002881) are the same LIKE: one aborts, one takes 10 seconds.
+INDEX crashes 000007 and 000008 are the same LIKE abort.
 
 ## 17. Arithmetic with a text column is accepted, and an index on it blocks inserts
 
