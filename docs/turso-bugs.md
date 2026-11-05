@@ -292,7 +292,8 @@ program reads the column.
 Expected PostgreSQL behavior: all four queries fail with
 `column "t.a" must appear in the GROUP BY clause or be used in an
 aggregate function`. Finding 5 is the same missing check for GROUP BY.
-Given the accepted query, the two plans must still agree.
+Given the accepted query, the two plans must still agree. SQLite 3.53.1
+rejects the first query with `HAVING clause on a non-aggregate query`.
 
 Found by: the TLP oracle, 12-hour campaign, round 12h-b
 (`SELECT * FROM v0 HAVING sum(c2) > v0.c2 * 'c'` against its partition on `oid = 1`).
@@ -338,6 +339,37 @@ SELECT typeof(make_date(2024, 1, 1));   -- tursopg: blob
 Expected PostgreSQL behavior: a value of type `date`.
 
 Found by: the reduction of finding 12.
+
+## 14. Crash: stack overflow on a nested CTE with the same name
+
+A CTE that defines an inner CTE with the same name, and reads it
+through a subquery, makes the planner recurse until the stack
+overflows.
+
+```sql
+WITH t AS (WITH t AS (SELECT 7) SELECT * FROM (SELECT * FROM t))
+SELECT * FROM (SELECT * FROM t);
+```
+
+```text
+thread 'main' has overflowed its stack
+fatal runtime error: stack overflow, aborting
+```
+
+The stack repeats `prepare_select_plan` (`core/translate/select.rs:174`),
+`parse_from` (`core/translate/planner.rs:2489`) and `parse_table`
+(`core/translate/planner.rs:2086`, the CTE branch). Thus the `t` in the
+inner subquery refers to the outer CTE again, not to the inner one.
+Without one of the two subqueries the query returns `7`:
+`WITH t AS (WITH t AS (SELECT 7) SELECT * FROM t) SELECT * FROM (SELECT * FROM t)`.
+
+Expected behavior: the result `7`. PostgreSQL gives it, and SQLite
+3.53.1 gives it too. The planner is in `core/`, so the SQLite frontend
+can have the same crash (not examined).
+
+Found by: the NoREC instance of the 12-hour campaign, round 12h-b, as
+an AFL++ crash (an `INSERT INTO v0 WITH x AS (... WITH x AS (...) ...)`
+statement with four levels of CTEs named `x`).
 
 ## Campaign log
 
