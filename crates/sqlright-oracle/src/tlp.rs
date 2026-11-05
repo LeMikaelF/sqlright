@@ -46,7 +46,10 @@ const TEMPLATES: &[&str] = &[
 const OUTER_MIN: &str = "SELECT MIN(aggr) FROM (SELECT *) AS subb;";
 const OUTER_MAX: &str = "SELECT MAX(aggr) FROM (SELECT *) AS subb;";
 const OUTER_SUM: &str = "SELECT SUM(aggr) FROM (SELECT *) AS subb;";
-const OUTER_AVG: &str = "SELECT SUM(s)/SUM(c) FROM (SELECT *) AS subb;";
+/// `SUM(s)` and `SUM(c)` are integers for an integer column, and an integer
+/// division drops the fraction of the average (PostgreSQL does the same).
+/// The cast keeps the fraction.
+const OUTER_AVG: &str = "SELECT SUM(s)::FLOAT8/SUM(c) FROM (SELECT *) AS subb;";
 
 /// The text of every oracle SELECT (form 0) in a marked test case.
 pub fn oracle_select_blocks(cmd_str: &str) -> Vec<String> {
@@ -264,7 +267,7 @@ impl Tlp {
                 work.update_left(res, Some(target));
             }
         } else {
-            // AVG: SUM(x) AS s, COUNT(x) AS c, then SUM(s)/SUM(c) outside.
+            // AVG: SUM(x) AS s, COUNT(x) AS c, then SUM(s)::FLOAT8/SUM(c) outside.
             let func_in_target =
                 *ir_wrapper::get_ir_node_in_stmt_with_type(&work, target, IrType::FuncName, false)
                     .first()?;
@@ -416,8 +419,8 @@ impl Tlp {
     }
 
     /// Compare two aggregate results as numbers. `avg(bigint)` prints as a
-    /// double in tursopg (`-2.77e+18`) while `sum(s) / sum(c)` is an integer,
-    /// so the values are compared with a relative tolerance. The C++ parsed
+    /// double in tursopg (`-2.77e+18`) and the rewritten average is a
+    /// double too, so the values are compared with a relative tolerance. The C++ parsed
     /// both as `int` and reported an error on overflow.
     fn compare_aggr(res: &mut CompRes) -> bool {
         if find_string_in(&res.res_str_0, "ERROR") || find_string_in(&res.res_str_1, "ERROR") {
@@ -736,7 +739,7 @@ mod tests {
             "{text2}"
         );
         assert!(
-            text2.starts_with("SELECT sum ( s ) / sum ( c ) FROM ("),
+            text2.starts_with("SELECT sum ( s ) :: float8 / sum ( c ) FROM ("),
             "{text2}"
         );
         assert!(parse_query(&text2).is_some(), "{text2}");
