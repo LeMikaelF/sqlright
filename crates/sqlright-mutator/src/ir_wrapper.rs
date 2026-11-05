@@ -546,6 +546,16 @@ pub fn check_node_num(t: &IrTree, root: IrId, limit: usize) -> bool {
         .all(|stmt| t.count_nodes(stmt) <= limit)
 }
 
+/// The name of the schema that `node` creates when it is the name part of
+/// a `CREATE SCHEMA` statement, in lower case.
+pub fn defined_schema_name(t: &IrTree, node: IrId) -> Option<String> {
+    if !matches!(t.ty(node), IrType::CreateSchemaStmt | IrType::OptSchemaName) {
+        return None;
+    }
+    let iden = t.left(node).filter(|&l| t.ty(l) == IrType::Identifier)?;
+    Some(t.str_val(iden).to_ascii_lowercase())
+}
+
 #[cfg(test)]
 mod tests {
     use super::*;
