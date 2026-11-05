@@ -188,6 +188,21 @@ impl Tlp {
         if tlp_type == TlpType::GroupBy && !Self::target_is_grouped(t, stmt) {
             return false;
         }
+        // `SELECT min(c1) FROM t HAVING max(c1) > 4` tests HAVING on the
+        // whole table, but each partition tests it on its own rows. A
+        // partition whose max is small drops its min, so the min of the
+        // partitions can be larger than the min of the table.
+        if matches!(
+            tlp_type,
+            TlpType::AggrAvg
+                | TlpType::AggrCount
+                | TlpType::AggrMax
+                | TlpType::AggrMin
+                | TlpType::AggrSum
+        ) && Self::has_having_clause(t, stmt)
+        {
+            return false;
+        }
         // An aggregate inside an expression (`CASE WHEN count(*) = 1 ...`)
         // makes the whole table one group. The query returns one row, and
         // the partitioned form returns one row per partition.
@@ -210,6 +225,12 @@ impl Tlp {
         ir_wrapper::get_ir_node_in_stmt_with_type(t, stmt, IrType::GroupByItem, false)
             .iter()
             .any(|&item| squeeze(&t.to_string(item)) == target_text)
+    }
+
+    fn has_having_clause(t: &IrTree, stmt: IrId) -> bool {
+        ir_wrapper::get_ir_node_in_stmt_with_type(t, stmt, IrType::HavingClause, false)
+            .iter()
+            .any(|&h| !t.is_empty(h))
     }
 
     /// True when the statement (not its subqueries) calls an aggregate function.
@@ -738,6 +759,16 @@ mod tests {
         let stmt = ir_wrapper::get_first_stmt_from_root(&q.tree, q.root).unwrap();
         assert!(!Tlp.is_oracle_select_stmt(&mut q.tree, stmt));
         let mut q = parse_query("SELECT c5 FROM v4 WHERE c5 > 0 GROUP BY c5;").unwrap();
+        let stmt = ir_wrapper::get_first_stmt_from_root(&q.tree, q.root).unwrap();
+        assert!(Tlp.is_oracle_select_stmt(&mut q.tree, stmt));
+    }
+
+    #[test]
+    fn rejects_an_aggregate_with_having() {
+        let mut q = parse_query("SELECT min(c1) FROM v0 WHERE c2 = 1 HAVING max(c1) > 4;").unwrap();
+        let stmt = ir_wrapper::get_first_stmt_from_root(&q.tree, q.root).unwrap();
+        assert!(!Tlp.is_oracle_select_stmt(&mut q.tree, stmt));
+        let mut q = parse_query("SELECT min(c1) FROM v0 WHERE c2 = 1;").unwrap();
         let stmt = ir_wrapper::get_first_stmt_from_root(&q.tree, q.root).unwrap();
         assert!(Tlp.is_oracle_select_stmt(&mut q.tree, stmt));
     }
