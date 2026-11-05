@@ -18,6 +18,8 @@ PostgreSQL does not have) have no entry in this file.
 NOREC crash 000000 (src 002220) of that campaign is #11403: a longer VALUES row
 panics in `op_string8` (`index out of bounds: the len is 9 but the index is 9`).
 NOREC crashes 000001 (src 002305) and 000004 (src 002636) are the same panic.
+camp-index2 crash 000000 (src 001852) is the same problem, with the panic in `op_integer`
+(`execute.rs:5910`), only in the run without indexes.
 
 ## 1. Crash: extension aggregate in a GROUP BY query
 
