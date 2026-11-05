@@ -1181,11 +1181,26 @@ impl Mutator {
 
 /// True for the text of a result marker: `BEGIN VERI n` or `END VERI n`, with
 /// or without quotes around it.
-fn is_marker_text(s: &str) -> bool {
+pub(crate) fn is_marker_text(s: &str) -> bool {
     let s = s.trim().trim_matches('\'').trim();
     s.strip_prefix("BEGIN VERI ")
         .or_else(|| s.strip_prefix("END VERI "))
         .is_some_and(|n| !n.is_empty() && n.bytes().all(|b| b.is_ascii_digit()))
+}
+
+/// True for the statement `SELECT 'BEGIN VERI n'` or `SELECT 'END VERI n'`.
+/// The harness prints such a statement as a marker instead of running it, so
+/// the mutator must not put one among the normal statements of a test case.
+pub(crate) fn is_marker_statement(stmt: &str) -> bool {
+    let s = stmt.trim().trim_end_matches(';').trim();
+    let Some(head) = s.get(..6) else {
+        return false;
+    };
+    if !head.eq_ignore_ascii_case("select") {
+        return false;
+    }
+    let rest = s[6..].trim();
+    rest.len() >= 2 && rest.starts_with('\'') && rest.ends_with('\'') && is_marker_text(rest)
 }
 
 #[cfg(test)]
@@ -1201,6 +1216,34 @@ mod tests {
         assert!(!is_marker_text("END VERI"));
         assert!(!is_marker_text("END VERI x"));
         assert!(!is_marker_text("sample"));
+    }
+
+    #[test]
+    fn finds_a_marker_statement() {
+        assert!(is_marker_statement("SELECT 'BEGIN VERI 0';"));
+        assert!(is_marker_statement("  select 'END VERI 3' ; "));
+        // A marker literal inside a bigger statement is not a marker statement.
+        assert!(!is_marker_statement("SELECT 'END VERI 1' FROM t;"));
+        assert!(!is_marker_statement("SELECT 'sample';"));
+        assert!(!is_marker_statement("CREATE TABLE t (a int);"));
+        assert!(!is_marker_statement("SELECT"));
+    }
+
+    #[test]
+    fn a_marker_statement_does_not_enter_the_library() {
+        let mut m = Mutator::new(1);
+        m.add_all_to_library(
+            &AnySelect,
+            "SELECT 'BEGIN VERI 1'; SELECT 'END VERI 0'; CREATE TABLE t (a int);",
+        );
+        let in_library = |word: &str| {
+            m.real_ir_set
+                .values()
+                .flatten()
+                .any(|entry| entry.query.contains(word))
+        };
+        assert!(in_library("CREATE TABLE"));
+        assert!(!in_library("VERI"));
     }
 
     struct AnySelect;

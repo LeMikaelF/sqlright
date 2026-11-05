@@ -225,10 +225,13 @@ purpose:
   first row, and reported a difference of the row order. The INDEX oracle
   also matches the function name exactly now (`summary` is not `sum`).
 - The mutator does not learn or reuse the literals `'BEGIN VERI n'` and
-  `'END VERI n'`. Saved test cases hold the marker statements, so the
-  literals entered the string library and later appeared in other queries.
-  A query such as `SELECT 'END VERI 1' FROM t` makes the harness print a
-  data row that is a whole line and looks like a marker.
+  `'END VERI n'`, and it does not add the marker statements themselves
+  (`SELECT 'BEGIN VERI n'`) to the library. Saved test cases hold the marker
+  statements, so the literals entered the string library and the statements
+  entered the statement library. Both later appeared among the normal
+  statements of other test cases. A query such as `SELECT 'END VERI 1' FROM t`
+  makes the harness print a data row that is a whole line and looks like a
+  marker. A stray marker statement shifts the result blocks.
 - A verdict of Fail becomes Error when the output has the line
   `ERROR:  interrupt`. That is a statement that hit the 2-second limit of
   the harness. It stops at a point that depends on timing, so the INDEX

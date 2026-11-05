@@ -127,6 +127,11 @@ index. INDEX reports of 08:26 UTC: `bug_INDEX_0d42200cc3259d9d`,
 `bug_INDEX_c0c3c8c18a2e0445`, `bug_INDEX_c289973e3e905df7`,
 `bug_INDEX_dfe7cafaa2d6b3ea`, `bug_INDEX_e4364d3ba6037b77` and
 `bug_INDEX_e87f495583b987d2`.
+A `date` column accepts `'0.0'` and stores `-4713-11-24`. An index on
+`(c1 + 1)` then rejects the same insert with
+`invalid date value: -4713-11-24`, because date arithmetic does not
+accept that date (`bug_INDEX_8ddd762e68dd7a54`, batch of 09:28 UTC).
+PostgreSQL rejects the insert with `invalid input syntax for type date`.
 A `jsonb` primary key does the same: after `INSERT INTO t VALUES (1), (2), (6)`,
 `WHERE c = 6` counts 1 row and `WHERE NOT (c = 6)` counts 3 rows, so
 `sum(c)` over the TLP partitions is 15 instead of 9 (round 12h-b, TLP). The
@@ -235,7 +240,8 @@ these forms:
 https://github.com/tursodatabase/turso/issues/11395#issuecomment-6648263299.
 Crashes `id:000010`, `id:000012` and `id:000015` are the same `VALUES` form.
 Count at 07:23 UTC: 4 of the 80 NoREC crashes have this panic. Count at
-08:26 UTC: 5 of the 221 NoREC crashes.
+08:26 UTC: 5 of the 221 NoREC crashes. Count at 09:28 UTC: 5 of the 273
+NoREC crashes.
 
 ## 8. ON CONFLICT DO UPDATE SET is not checked on a table without an index
 
@@ -277,7 +283,9 @@ DO UPDATE). Found again on 2026-11-05 (`bug_INDEX_7bdd7c2ec31c66e2`,
 `SET value` (`bug_INDEX_81b8b3f09cc3f7e9`) and `SET a`
 (`bug_INDEX_d2523676375ffab9`). Batch of 07:23 UTC:
 `bug_INDEX_7906bb8760a5989e` (`SET b`), `bug_INDEX_86a5ffea1600cff3`
-(`SET a`) and `bug_INDEX_920195ff53002088` (`SET level1_no`).
+(`SET a`) and `bug_INDEX_920195ff53002088` (`SET level1_no`). Batch of
+09:28 UTC: `bug_INDEX_1b178eed5095c9a5`, `bug_INDEX_1d08af128a4509aa`,
+`bug_INDEX_6be6a020c30b4897` and `bug_INDEX_91f13d274e059e28`.
 
 A flood: from 05:20 to 05:22 UTC the INDEX instance wrote 150 reports
 in 2 minutes. All 150 hold `ON CONFLICT DO UPDATE SET fruit = ...`. They
@@ -312,7 +320,13 @@ expression index does the same: `CREATE INDEX i ON t ((c = 'S'))` on a
 2026-11-05, `bug_INDEX_2821e5961239e774`). Comment:
 https://github.com/tursodatabase/turso/issues/11396#issuecomment-6649576708.
 Found again as a partial index (`WHERE c1 = 'dump_nulls'` on a
-`numeric(7, 1)` column, `bug_INDEX_1f2a49ac2c86aa84`).
+`numeric(7, 1)` column, `bug_INDEX_1f2a49ac2c86aa84`). Batch of 09:28 UTC,
+with other literals that are converted only at insert time:
+`bug_INDEX_3c014510d5e3e79f` (`WHERE v0.c1 / 'plot'` on a `serial`
+column), `bug_INDEX_c4b2d91033a5c23f` (`v0.c1 / '{"a":true,...}'`) and
+`bug_INDEX_59bb27fce00a48ac` (`'08:00:2b:ff:fe:01:02:03'::jsonb ->> c2`,
+`malformed JSON` at insert). PostgreSQL converts these literals when it
+makes the index, so `CREATE INDEX` fails there.
 
 ## 10. A very large numeric scale makes an insert run for minutes
 
@@ -424,7 +438,8 @@ an AFL++ crash (`SELECT make_date(TRUE, 4, 1453556443) FROM (VALUES ...)`).
 Issue: https://github.com/tursodatabase/turso/issues/11398. The INDEX
 instance of the campaign of 2026-11-05 found it again as crash
 `id:000000` (`make_date(2013, 2, 1534231376)`, the same panic at
-`chrono-0.4.42/src/naive/datetime/mod.rs:1635:38`).
+`chrono-0.4.42/src/naive/datetime/mod.rs:1635:38`). Count at 09:28 UTC:
+1 of the 273 NoREC crashes and 1 of the 2 INDEX crashes.
 
 ## 13. make_date returns a blob
 
@@ -508,7 +523,8 @@ and `ALTER TABLE v0 DROP c`).
 
 Issue: https://github.com/tursodatabase/turso/issues/11402 (open). Found
 again in the campaign of 2026-11-05: 2 of the 6 TLP crashes at 08:26 UTC
-(the same assertion at `core/translate/alter.rs:893:13`).
+(the same assertion at `core/translate/alter.rs:893:13`). Count at
+09:28 UTC: 2 of the 8 TLP crashes.
 
 ## 16. Casts that PostgreSQL does not have are accepted
 
@@ -602,7 +618,10 @@ over a `text` column). Reports of 08:26 UTC: `bug_INDEX_1a217873e45c6a45`,
 `bug_INDEX_96eea9408a85248f`, `bug_INDEX_9f066be804e3ff0b`,
 `bug_INDEX_ad49400f3969e8ea`, `bug_INDEX_b0edbda1114b3d20`,
 `bug_INDEX_b90eecb2eae801ce` (`c2::timestamp`), `bug_INDEX_cfef8533ee4c5aa5`
-and `bug_INDEX_e939a8e6cc18eea1`.
+and `bug_INDEX_e939a8e6cc18eea1`. Batch of 09:28 UTC:
+`bug_INDEX_1a423d5bb687ff09`, `bug_INDEX_233a663fe366f189`,
+`bug_INDEX_77f2099a21f45a28` (`money` to `serial[]`),
+`bug_INDEX_e935842f2fa12a98` and `bug_INDEX_fba159fca61bc472`.
 
 ## 17. Crash: a multi-row VALUES list with rows of different lengths
 
@@ -646,7 +665,9 @@ Crashes `id:000005` (`op_real`), `id:000006` (`op_integer`) and
 (`op_real`) and `id:000011` (`op_string8`). Count at 07:23 UTC: 12 of
 the 80 NoREC crashes (`execute.rs` lines 5910, 6227 and 6257) and both
 TLP crashes have this cause. Count at 08:26 UTC: 14 of the 221 NoREC
-crashes and 4 of the 6 TLP crashes.
+crashes and 4 of the 6 TLP crashes. Count at 09:28 UTC: 18 of the 273
+NoREC crashes (15 at the three known lines and 3 more `VALUES` forms),
+5 of the 8 TLP crashes and 1 of the 2 INDEX crashes (`execute.rs:5910`).
 
 ## 18. integer / text column is accepted
 
@@ -800,7 +821,8 @@ under test (ff97c22), so the crash is fixed upstream.
 Count at 07:23 UTC: 64 of the 80 NoREC crashes have this panic. They
 came from one queue entry. AFL++ ran that entry again and again, and the
 NoREC instance lost about 30 minutes on it. Count at 08:26 UTC: 202 of
-the 221 NoREC crashes.
+the 221 NoREC crashes. Count at 09:28 UTC: 249 of the 273 NoREC crashes
+and 1 of the 8 TLP crashes.
 
 ## 23. LIKE reads the whole string when the first characters differ
 
@@ -907,4 +929,4 @@ reports.
 | a query holds the literal `'BEGIN VERI 1'`, and the error message repeats it | NoREC | 1 | the result extraction takes a marker only as a whole line |
 | a statement hits the 2-second limit of the harness in one run only | INDEX | 1 | a Fail with `ERROR:  interrupt` in the output becomes Error |
 | `max(a, b)` with two arguments taken for an aggregate | INDEX | 6 | `ir_wrapper::is_scalar_min_max` (also used by TLP) |
-| a query returns the row `END VERI 1`, which looks like a marker (`SELECT 'END VERI 1' FROM t`) | TLP | 1 | the mutator does not learn or reuse marker literals (`is_marker_text` in `fix.rs`) |
+| a query returns the row `END VERI 1`, which looks like a marker (`SELECT 'END VERI 1' FROM t`), or a stray marker statement sits among the normal statements | TLP | 2 | the mutator does not learn or reuse marker literals, and it does not add marker statements to the library (`is_marker_text` and `is_marker_statement` in `fix.rs`) |

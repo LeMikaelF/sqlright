@@ -304,6 +304,12 @@ impl Mutator {
             if current.is_empty() {
                 continue;
             }
+            // A saved test case holds the marker statements of the oracle.
+            // They must not enter the library, or the mutator puts them among
+            // the normal statements of other test cases.
+            if crate::fix::is_marker_statement(&current) {
+                continue;
+            }
             current.push(';');
             let Some(mut q) = parse_query(&current) else {
                 continue;
