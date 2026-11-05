@@ -213,6 +213,10 @@ purpose:
   statement fails, the marker SELECT too, and the result blocks of two
   pairs ran into each other. For the same reason `sqlright seeds` leaves
   out BEGIN, COMMIT, ROLLBACK and SAVEPOINT statements by default.
+- The engine does not make a test case that has the words `BEGIN VERI`
+  or `END VERI` outside the result markers. The mutation library takes
+  string literals from the marker statements. Such a literal showed in an
+  error message, and the result extraction split the output there.
 - The harness prints `ERROR:  <message>` for a failed statement, like the
   C++ PostgreSQL client did, so the result extraction is unchanged.
 
