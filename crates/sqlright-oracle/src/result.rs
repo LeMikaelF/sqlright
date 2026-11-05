@@ -31,14 +31,16 @@ pub fn split_runs(output: &str) -> Vec<String> {
 }
 
 /// The results between every `begin`/`end` pair, in order. A block with an
-/// error becomes the single word `Error`.
+/// error becomes the single word `Error`. A marker counts only when it is a
+/// whole line: an error message can repeat the text of a query, and that
+/// text can hold a marker.
 pub fn extract_query_result(res: &str, begin_sign: &str, end_sign: &str) -> Vec<String> {
     let mut out = Vec::new();
     if is_str_empty(res) {
         return out;
     }
-    let mut begin_idx = res.find(begin_sign);
-    let mut end_idx = res.find(end_sign);
+    let mut begin_idx = find_marker(res, begin_sign, 0);
+    let mut end_idx = find_marker(res, end_sign, 0);
     while let Some(b) = begin_idx {
         let Some(e) = end_idx else {
             break;
@@ -49,12 +51,8 @@ pub fn extract_query_result(res: &str, begin_sign: &str, end_sign: &str) -> Vec<
         } else {
             ""
         };
-        begin_idx = res[content_start..]
-            .find(begin_sign)
-            .map(|p| p + content_start);
-        end_idx = res[e + end_sign.len()..]
-            .find(end_sign)
-            .map(|p| p + e + end_sign.len());
+        begin_idx = find_marker(res, begin_sign, content_start);
+        end_idx = find_marker(res, end_sign, e + end_sign.len());
         if cur.contains("Error") || cur.contains("ERROR") {
             out.push("Error".to_string());
         } else {
@@ -62,6 +60,23 @@ pub fn extract_query_result(res: &str, begin_sign: &str, end_sign: &str) -> Vec<
         }
     }
     out
+}
+
+/// The position of the first line at or after `from` that holds only the
+/// marker `sign` (spaces around it are allowed).
+fn find_marker(res: &str, sign: &str, from: usize) -> Option<usize> {
+    let mut line_start = from;
+    while line_start < res.len() {
+        let line_end = res[line_start..]
+            .find('\n')
+            .map_or(res.len(), |p| p + line_start);
+        let line = &res[line_start..line_end];
+        if line.trim() == sign {
+            return Some(line_start + (line.len() - line.trim_start().len()));
+        }
+        line_start = line_end + 1;
+    }
+    None
 }
 
 /// Compare the forms of every oracle SELECT inside one run.
@@ -214,6 +229,21 @@ mod tests {
         assert_eq!(
             extract_query_result(out, "BEGIN VERI 1", "END VERI 1"),
             vec!["\n3 \n"]
+        );
+    }
+
+    #[test]
+    fn a_marker_inside_an_error_line_is_not_a_marker() {
+        // The error message of a failed query repeats the text of the query,
+        // and the query holds the literal 'BEGIN VERI 1'.
+        let out = "BEGIN VERI 0 \nERROR:  cannot run (sval: \"BEGIN VERI 1\")\nEND VERI 0 \nBEGIN VERI 1 \n5 \nEND VERI 1 \n";
+        assert_eq!(
+            extract_query_result(out, "BEGIN VERI 0", "END VERI 0"),
+            vec!["Error"]
+        );
+        assert_eq!(
+            extract_query_result(out, "BEGIN VERI 1", "END VERI 1"),
+            vec!["\n5 \n"]
         );
     }
 

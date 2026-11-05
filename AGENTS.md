@@ -215,6 +215,15 @@ purpose:
   out BEGIN, COMMIT, ROLLBACK and SAVEPOINT statements by default.
 - The harness prints `ERROR:  <message>` for a failed statement, like the
   C++ PostgreSQL client did, so the result extraction is unchanged.
+- The result extraction takes a marker (`BEGIN VERI n`, `END VERI n`) only
+  when it is a whole line. The C++ searched the text. A tursopg error
+  message repeats the failed query, and a query that holds the literal
+  `'BEGIN VERI 1'` made the result blocks of two pairs run into each other.
+- A verdict of Fail becomes Error when the output has the line
+  `ERROR:  interrupt`. That is a statement that hit the 2-second limit of
+  the harness. It stops at a point that depends on timing, so the INDEX
+  oracle found a difference between its runs (a rolled back insert of
+  100,000 rows left a different state).
 
 ## When a campaign reports hundreds of failures
 
