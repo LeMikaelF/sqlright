@@ -338,6 +338,9 @@ impl Engine {
         if marked_runs.is_empty() || is_str_empty(&marked_runs[0]) {
             return None;
         }
+        if unmarked_runs.iter().any(|r| contains_result_marker(r)) {
+            return None;
+        }
         Some(TestCase {
             marked_runs,
             unmarked_runs,
@@ -515,9 +518,38 @@ pub fn is_non_deterministic(input: &str) -> bool {
         || input.lines().any(|l| l.trim_start().starts_with('!'))
 }
 
+/// True when the text holds `BEGIN VERI` or `END VERI`. The result
+/// extraction finds the result blocks by these words. A string literal
+/// with these words in a statement other than a result marker can show in
+/// a result row or an error message, and the extraction then splits the
+/// output at the wrong place.
+fn contains_result_marker(text: &str) -> bool {
+    text.contains("BEGIN VERI") || text.contains("END VERI")
+}
+
 #[cfg(test)]
 mod tests {
     use super::*;
+
+    #[test]
+    fn a_case_with_a_marker_literal_is_not_generated() {
+        let mut engine = Engine::new(test_config("NOREC"), 1).unwrap();
+        let lib = "CREATE TABLE t (a INT, b TEXT);\nSELECT COUNT(*) FROM t WHERE b = 'BEGIN VERI 1';\nSELECT COUNT(*) FROM t WHERE a > 0;\n";
+        for line in lib.lines() {
+            engine.mutator.init_from_line(engine.oracle.as_ref(), line);
+        }
+        let seed = "CREATE TABLE v0 (c1 INT, c2 TEXT);\nINSERT INTO v0 VALUES (1, 'BEGIN VERI 1');\nINSERT INTO v0 VALUES (2, 'END VERI 0');\n";
+        let cases = engine.generate_cases(seed);
+        for c in &cases {
+            assert!(
+                !contains_result_marker(&c.unmarked_runs[0]),
+                "{}",
+                c.unmarked_runs[0]
+            );
+        }
+        assert!(contains_result_marker("SELECT format('p', 'BEGIN VERI 1')"));
+        assert!(!contains_result_marker("SELECT 'BEGIN'"));
+    }
 
     fn test_config(oracle: &str) -> Config {
         let dir = std::env::temp_dir().join(format!(
