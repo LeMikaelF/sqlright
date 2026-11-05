@@ -250,7 +250,8 @@ https://github.com/tursodatabase/turso/issues/11395#issuecomment-6648263299.
 Crashes `id:000010`, `id:000012` and `id:000015` are the same `VALUES` form.
 Count at 07:23 UTC: 4 of the 80 NoREC crashes have this panic. Count at
 08:26 UTC: 5 of the 221 NoREC crashes. Count at 09:28 UTC: 5 of the 273
-NoREC crashes. Count at 10:32 UTC: 5 of the 347 NoREC crashes.
+NoREC crashes. Count at 10:32 UTC: 5 of the 347 NoREC crashes. Count at
+11:40 UTC: 5 of the 423 NoREC crashes.
 
 ## 8. ON CONFLICT DO UPDATE SET is not checked on a table without an index
 
@@ -455,7 +456,8 @@ instance of the campaign of 2026-11-05 found it again as crash
 `id:000000` (`make_date(2013, 2, 1534231376)`, the same panic at
 `chrono-0.4.42/src/naive/datetime/mod.rs:1635:38`). Count at 09:28 UTC:
 1 of the 273 NoREC crashes and 1 of the 2 INDEX crashes. Count at
-10:32 UTC: 1 of the 347 NoREC crashes and 1 of the 2 INDEX crashes.
+10:32 UTC: 1 of the 347 NoREC crashes and 1 of the 2 INDEX crashes. Count
+at 11:40 UTC: 1 of the 423 NoREC crashes and 1 of the 2 INDEX crashes.
 
 ## 13. make_date returns a blob
 
@@ -540,7 +542,8 @@ and `ALTER TABLE v0 DROP c`).
 Issue: https://github.com/tursodatabase/turso/issues/11402 (open). Found
 again in the campaign of 2026-11-05: 2 of the 6 TLP crashes at 08:26 UTC
 (the same assertion at `core/translate/alter.rs:893:13`). Count at
-09:28 UTC: 2 of the 8 TLP crashes.
+09:28 UTC: 2 of the 8 TLP crashes. Count at 11:40 UTC: 2 of the 12 TLP
+crashes and 1 of the 423 NoREC crashes.
 
 ## 16. Casts that PostgreSQL does not have are accepted
 
@@ -652,7 +655,11 @@ rejects as not IMMUTABLE): `bug_INDEX_23b876800dbb1b7a`,
 `bug_INDEX_b404f646e965727f`, `bug_INDEX_b6a4172b7cba01ae`,
 `bug_INDEX_d961ea556edfcf0f`, `bug_INDEX_dece4ac06f367ad5`,
 `bug_INDEX_e0a840ab74017cdf` (`time`), `bug_INDEX_e62eccc5582950e4`,
-`bug_INDEX_f44d477ec6e2e065` and `bug_INDEX_fc89e6bef329db38`.
+`bug_INDEX_f44d477ec6e2e065` and `bug_INDEX_fc89e6bef329db38`. Batch of
+11:40 UTC: `bug_INDEX_1017e3dfefa8a80c`, `bug_INDEX_28580378d46921fc`,
+`bug_INDEX_6a9245f1441f5162`, `bug_INDEX_c34786fe8556c395` (`time`),
+`bug_INDEX_e7901a91c92ddecd` and `bug_INDEX_eb8c8c99ee808bbd`
+(`tsvector[]`).
 
 ## 17. Crash: a multi-row VALUES list with rows of different lengths
 
@@ -700,7 +707,9 @@ crashes and 4 of the 6 TLP crashes. Count at 09:28 UTC: 18 of the 273
 NoREC crashes (15 at the three known lines and 3 more `VALUES` forms),
 5 of the 8 TLP crashes and 1 of the 2 INDEX crashes (`execute.rs:5910`).
 Count at 10:32 UTC: 18 of the 347 NoREC crashes (15 plus 3 more `VALUES`
-forms), 5 of the 8 TLP crashes and 1 of the 2 INDEX crashes.
+forms), 5 of the 8 TLP crashes and 1 of the 2 INDEX crashes. Count at
+11:40 UTC: 15 of the 423 NoREC crashes, 7 of the 12 TLP crashes and 1 of
+the 2 INDEX crashes.
 
 ## 18. integer / text column is accepted
 
@@ -873,7 +882,8 @@ came from one queue entry. AFL++ ran that entry again and again, and the
 NoREC instance lost about 30 minutes on it. Count at 08:26 UTC: 202 of
 the 221 NoREC crashes. Count at 09:28 UTC: 249 of the 273 NoREC crashes
 and 1 of the 8 TLP crashes. Count at 10:32 UTC: 323 of the 347 NoREC
-crashes and 1 of the 8 TLP crashes.
+crashes and 1 of the 8 TLP crashes. Count at 11:40 UTC: 397 of the 423
+NoREC crashes and 3 of the 12 TLP crashes.
 
 ## 23. LIKE reads the whole string when the first characters differ
 
@@ -924,6 +934,11 @@ Two more NoREC hangs build a long string with `lpad` in a multi-row
 - `id:000004`: `INSERT INTO v7 VALUES (1, 'p'), (quote_literal(lpad('hi', 671437373, '30')), 'q'), (3, 'r') RETURNING v7.*`
   (671 MB). Prefix bisection with a limit of 8 seconds: statement 6 is
   the first slow statement.
+- NoREC `id:000005`: statement 6,
+  `INSERT INTO v0 VALUES (1, 'p'), (quote_literal(lpad('hi', 851276915, CASE ... ELSE 2 END)), 'q'), (3, 'r') RETURNING v0.*`
+  (851 MB).
+- TLP `id:000001`: statement 38, `SELECT lpad('::4:3:2:0/24', '353316075') FROM v6`
+  (353 MB).
 
 In PostgreSQL 16.15, `lpad('hi', 529537728, '*')` fails at once with
 `requested length too large`. A length of 268,435,455 fails the same way.
