@@ -207,8 +207,9 @@ panic occurs in a `VALUES` list and in `UPDATE ... SET`:
 `INSERT INTO t VALUES (percentile_cont(1, 0))` and
 `UPDATE t SET a = median(a)` (campaign of 2026-11-05, NoREC crash
 `id:000008`). PostgreSQL gives `aggregate functions are not allowed in
-VALUES` and `... in UPDATE`. Draft comment:
-`work/issues-draft/10-comment-11395-values-and-update.md`.
+VALUES` and `... in UPDATE`. A comment on the issue already covers
+these forms:
+https://github.com/tursodatabase/turso/issues/11395#issuecomment-6648263299.
 
 ## 8. ON CONFLICT DO UPDATE SET is not checked on a table without an index
 
@@ -242,7 +243,13 @@ Issues: https://github.com/tursodatabase/turso/issues/11407 (DO UPDATE
 is compiled only with an index) and
 https://github.com/tursodatabase/turso/issues/9664 (unknown name in
 DO UPDATE). Found again on 2026-11-05 (`bug_INDEX_7bdd7c2ec31c66e2`,
-`bug_INDEX_1988eb367ad99269`).
+`bug_INDEX_1988eb367ad99269`, `bug_INDEX_707f3d23a099f49f`,
+`bug_INDEX_ee0a950fc16e90b4`).
+
+A flood: from 05:20 to 05:22 UTC the INDEX instance wrote 150 reports
+in 2 minutes. All 150 hold `ON CONFLICT DO UPDATE SET fruit = ...`. They
+are mutations of one queue entry. In every group of the replays, run 0
+alone has `no such column: fruit`, so they have the cause of this finding.
 
 ## 9. A partial index with an invalid literal makes every insert fail
 
@@ -271,6 +278,8 @@ expression index does the same: `CREATE INDEX i ON t ((c = 'S'))` on a
 `numeric(10, 2)` column makes every insert fail (campaign of
 2026-11-05, `bug_INDEX_2821e5961239e774`). Comment:
 https://github.com/tursodatabase/turso/issues/11396#issuecomment-6649576708.
+Found again as a partial index (`WHERE c1 = 'dump_nulls'` on a
+`numeric(7, 1)` column, `bug_INDEX_1f2a49ac2c86aa84`).
 
 ## 10. A very large numeric scale makes an insert run for minutes
 
@@ -488,7 +497,11 @@ too (not IMMUTABLE). Comment on #11408:
 https://github.com/tursodatabase/turso/issues/11408#issuecomment-6649576030.
 Later reports with the same cause: `bug_INDEX_bbc9601b7afe661c`,
 `bug_INDEX_ca4e42c00132b585`, `bug_INDEX_42f9435f12d03b3a` and
-`bug_INDEX_bf15be9e0abbc82e`.
+`bug_INDEX_bf15be9e0abbc82e`. Batch of 05:19 UTC: `bug_INDEX_4427601d464563f1`,
+`bug_INDEX_453af712dcc74623` (`timestamptz`), `bug_INDEX_69d2910c20088ac5`,
+`bug_INDEX_6d3ee45d508cab11`, `bug_INDEX_b9b3ee67c76aab29` (`timestamp[]`),
+`bug_INDEX_bd796b14562b09d3`, `bug_INDEX_d0dc3b970ef3a7b5` (`tsvector[]`),
+`bug_INDEX_e01e6b4b1d4cbab2` and `bug_INDEX_eb5535a58eb9f671`.
 
 ## 17. Crash: a multi-row VALUES list with rows of different lengths
 
@@ -528,7 +541,8 @@ panics in `op_real` (`core/vdbe/execute.rs:6227`). The other is a bare
 panics too. Comment:
 https://github.com/tursodatabase/turso/issues/11403#issuecomment-6649575149.
 Crashes `id:000005` (`op_real`), `id:000006` (`op_integer`) and
-`id:000007` (`op_string8`) have the same cause.
+`id:000007` (`op_string8`) have the same cause. So does `id:000009`
+(`op_real`).
 
 ## 18. integer / text column is accepted
 
@@ -548,7 +562,7 @@ same index. Thus, the different insert result is correct in itself.
 
 Found by: the INDEX oracle, campaign of 2026-11-05 (3 reports:
 `bug_INDEX_1653c8fb60014856`, `bug_INDEX_589d514e28fe54ca`,
-`bug_INDEX_5e7279dacd3879bb`). A fourth report (`bug_INDEX_8fb1f3fb9837add0`)
+`bug_INDEX_5e7279dacd3879bb`; later `bug_INDEX_d4fbfa9b03fa97be`). A fourth report (`bug_INDEX_8fb1f3fb9837add0`)
 has `1 / c1` on a `serial` column and `INSERT ... VALUES ('0.0')`.
 tursopg stores `'0.0'` as `0` in an integer column. PostgreSQL rejects
 it (`invalid input syntax for type integer: "0.0"`), close to
@@ -604,6 +618,33 @@ Found by: the INDEX oracle, campaign of 2026-11-05
 Issue: a variant of https://github.com/tursodatabase/turso/issues/9663
 (the same problem with `rowid`). Comment:
 https://github.com/tursodatabase/turso/issues/9663#issuecomment-6649784812.
+
+## 21. DELETE with a table alias fails when an index uses a qualified column
+
+tursopg accepts an expression index with a qualified column. After
+that, a `DELETE` with a table alias fails. An `UPDATE` with a table
+alias fails when it changes a column of the index expression.
+
+```sql
+CREATE TABLE v0 (a int, b int);
+INSERT INTO v0 VALUES (1, 1);
+CREATE INDEX vi ON v0 ((v0.b + 1));
+DELETE FROM v0 t;            -- tursopg: ERROR:  no such table: v0
+UPDATE v0 AS t SET b = 5;    -- tursopg: ERROR:  no such table: v0
+```
+
+Without the alias, or without the index, both statements succeed. The
+stored index expression keeps the `v0.` qualifier, and the DML program
+looks for it under the alias `t`. The SQLite frontend rejects the index
+(#6699), but the PostgreSQL frontend does not.
+
+Expected PostgreSQL behavior: the index is accepted, and `DELETE FROM
+v0 t` deletes 1 row (PostgreSQL 16.15).
+
+Found by: the INDEX oracle, campaign of 2026-11-05
+(`bug_INDEX_9643460f6e12096a`).
+
+Issue: https://github.com/tursodatabase/turso/issues/11420.
 
 ## Campaign log
 
