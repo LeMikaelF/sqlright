@@ -375,6 +375,13 @@ comparison (finding 17).
 - The harness prints NULL as nothing, so a row `(1, NULL, 2)` and a row
   `(1, 2, NULL)` print the same. The row comparison of EET, DQE and
   LATERAL cannot see a NULL that moved to another column.
+- Many oracle SELECTs fail before the oracle can compare them. In a
+  sample of 100 test cases per oracle, 32 % (NoREC), 48 % (TLP) and
+  58 % (INDEX) of the result blocks held an error. Two causes are not
+  fixed: a mutation puts a qualified name (`x . x`) in FROM, and the
+  instantiation fills it as `table.column`. Also, a mutation gives a
+  CREATE TABLE a type that does not exist, and each later statement on
+  that table fails.
 - AFL++ reports some instability for the harness (the coverage of a run
   changes with hash map iteration order inside turso). AFL++ handles it; it
   only lowers the value of the coverage feedback.
