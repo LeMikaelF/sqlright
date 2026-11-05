@@ -460,6 +460,7 @@ A longer pattern aborts the process under a 4 GB memory limit:
 `SELECT '' LIKE repeat('2', 863178415)` stops with `memory allocation of
 3452713680 bytes failed` (AFL++ crash, INDEX instance). Comment:
 https://github.com/tursodatabase/turso/issues/11411#issuecomment-6649235187
+INDEX crashes 000004 to 000006 (src 002167) are the same abort, with an operand of more than 700 million characters on either side of LIKE.
 
 ## 17. Arithmetic with a text column is accepted, and an index on it blocks inserts
 

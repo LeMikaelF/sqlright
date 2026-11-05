@@ -27,6 +27,15 @@ const RUN_MARKER: &str = "-- SQLRIGHT RUN";
 /// Statements that take longer than this are stopped and reported as errors.
 const STATEMENT_TIMEOUT: Duration = Duration::from_secs(2);
 
+/// The most bytes of rows that one statement can write. A larger result
+/// (for example `SELECT repeat('x', 700000000) FROM t`) is replaced by one
+/// error line. Without a limit, the output buffer grows past the memory
+/// limit and the harness aborts, which AFL++ saves as a crash.
+const MAX_STATEMENT_OUTPUT: usize = 16 * 1024 * 1024;
+
+/// The error message for a statement whose rows are larger than `MAX_STATEMENT_OUTPUT`.
+const OUTPUT_TOO_LARGE: &str = "sqlright: the result is larger than 16 MiB";
+
 /// The first output line: this marker and the FNV-1a hash of the input.
 /// Must match `sqlright_afl::engine::INPUT_MARKER`.
 const INPUT_MARKER: &str = "-- SQLRIGHT INPUT";
@@ -137,9 +146,15 @@ fn run_one(conn: &Connection, sql: &str, out: &mut Vec<u8>) {
         Ok(Some(mut stmt)) => {
             stmt.set_query_timeout_override(Some(Some(STATEMENT_TIMEOUT)));
             let num_columns = stmt.num_columns();
+            let start = out.len();
+            let mut too_large = false;
             let result = stmt.run_with_row_callback(|row| {
                 if num_columns > 0 {
                     for value in row.get_values() {
+                        if out.len() - start + value_size(value) > MAX_STATEMENT_OUTPUT {
+                            too_large = true;
+                            return Err(turso_core::LimboError::Interrupt.into());
+                        }
                         if !matches!(value, Value::Null) {
                             let _ = write!(out, "{value} ");
                         }
@@ -148,7 +163,10 @@ fn run_one(conn: &Connection, sql: &str, out: &mut Vec<u8>) {
                 }
                 Ok(())
             });
-            if let Err(e) = result {
+            if too_large {
+                out.truncate(start);
+                let _ = writeln!(out, "ERROR:  {OUTPUT_TOO_LARGE}");
+            } else if let Err(e) = result {
                 write_error(out, &e);
             }
         }
@@ -166,6 +184,15 @@ fn result_marker(sql: &str) -> Option<&str> {
     let inner = quoted.strip_prefix('\'')?.strip_suffix('\'')?;
     let is_marker = inner.strip_prefix("BEGIN VERI ").or_else(|| inner.strip_prefix("END VERI ")).map(|n| !n.is_empty() && n.bytes().all(|b| b.is_ascii_digit())).unwrap_or(false);
     is_marker.then_some(inner)
+}
+
+/// The number of bytes that a value takes in the output, without the separator.
+fn value_size(value: &Value) -> usize {
+    match value {
+        Value::Text(t) => t.as_str().len(),
+        Value::Blob(b) => b.len(),
+        Value::Null | Value::Numeric(_) => 0,
+    }
 }
 
 fn write_error(out: &mut Vec<u8>, error: &turso_pg::Error) {
