@@ -202,6 +202,14 @@ This is not finding 1. Finding 1 is a slice index panic in
 Found by: the NoREC oracle, 12-hour campaign. AFL++ saved it as a crash
 after 88 seconds (`SELECT count(*) FROM v0 WHERE c1 @> percentile_cont(c2, c1)`).
 
+Issue: https://github.com/tursodatabase/turso/issues/11395. The same
+panic occurs in a `VALUES` list and in `UPDATE ... SET`:
+`INSERT INTO t VALUES (percentile_cont(1, 0))` and
+`UPDATE t SET a = median(a)` (campaign of 2026-11-05, NoREC crash
+`id:000008`). PostgreSQL gives `aggregate functions are not allowed in
+VALUES` and `... in UPDATE`. Draft comment:
+`work/issues-draft/10-comment-11395-values-and-update.md`.
+
 ## 8. ON CONFLICT DO UPDATE SET is not checked on a table without an index
 
 An unknown column in the SET list of `ON CONFLICT DO UPDATE` gives an
