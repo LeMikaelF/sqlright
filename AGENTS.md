@@ -304,6 +304,10 @@ purpose:
   error message, and the result extraction split the output there.
 - The harness prints `ERROR:  <message>` for a failed statement, like the
   C++ PostgreSQL client did, so the result extraction is unchanged.
+- When the scanner of tursopg rejects one statement of a text, the
+  harness cuts the text after each line that ends with `;` and splits
+  each part alone. Then that statement fails alone, and the others run.
+  `sqlright seeds` needs this to find the failing statements of a file.
 - `min(a, b)` and `max(a, b)` with two or more arguments are scalar
   functions in tursopg (as in SQLite). The INDEX and TLP oracles do not take
   them for aggregates. The C++ took them for aggregates, compared only the
