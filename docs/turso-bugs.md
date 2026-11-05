@@ -233,7 +233,8 @@ with indexes and the run without indexes were different).
 Issues: https://github.com/tursodatabase/turso/issues/11407 (DO UPDATE
 is compiled only with an index) and
 https://github.com/tursodatabase/turso/issues/9664 (unknown name in
-DO UPDATE). Found again on 2026-11-05 (`bug_INDEX_7bdd7c2ec31c66e2`).
+DO UPDATE). Found again on 2026-11-05 (`bug_INDEX_7bdd7c2ec31c66e2`,
+`bug_INDEX_1988eb367ad99269`).
 
 ## 9. A partial index with an invalid literal makes every insert fail
 
@@ -477,6 +478,9 @@ column, or `text[]` on an `int4` or `serial` column. One uses
 `c2::timestamptz` on a `text` column. PostgreSQL rejects that index
 too (not IMMUTABLE). Comment on #11408:
 https://github.com/tursodatabase/turso/issues/11408#issuecomment-6649576030.
+Later reports with the same cause: `bug_INDEX_bbc9601b7afe661c`,
+`bug_INDEX_ca4e42c00132b585`, `bug_INDEX_42f9435f12d03b3a` and
+`bug_INDEX_bf15be9e0abbc82e`.
 
 ## 17. Crash: a multi-row VALUES list with rows of different lengths
 
@@ -515,6 +519,8 @@ panics in `op_real` (`core/vdbe/execute.rs:6227`). The other is a bare
 `VALUES` statement without `INSERT`: `VALUES (1), (1, 2, 3, 4, 5, 6, 'x')`
 panics too. Comment:
 https://github.com/tursodatabase/turso/issues/11403#issuecomment-6649575149.
+Crashes `id:000005` (`op_real`), `id:000006` (`op_integer`) and
+`id:000007` (`op_string8`) have the same cause.
 
 ## 18. integer / text column is accepted
 
@@ -544,6 +550,52 @@ is finding 17 again.
 Issue: a variant of https://github.com/tursodatabase/turso/issues/11387.
 Comment:
 https://github.com/tursodatabase/turso/issues/11387#issuecomment-6649577460.
+
+## 19. The serial counter keeps an explicit value after a ROLLBACK
+
+An explicit value in a `serial` column moves the counter of the column.
+The counter keeps that value after a failed insert, a `DELETE` and a
+`ROLLBACK`.
+
+```sql
+CREATE TABLE w (a serial PRIMARY KEY, b text);
+BEGIN;
+INSERT INTO w VALUES (90, 'b');
+ROLLBACK;
+INSERT INTO w (b) VALUES ('z');
+SELECT a, b FROM w;               -- tursopg: 91 z   PostgreSQL: 1 z
+```
+
+Expected PostgreSQL behavior: an explicit value does not change the
+sequence, so the new row gets `1`.
+
+Found by: the INDEX oracle, campaign of 2026-11-05
+(`bug_INDEX_1779ab36aa0d3ed1`). The run with the index hit the 2-second
+statement timeout of the harness on an `INSERT ... SELECT` of 100,000
+rows. The rows were rolled back, but the counter was not. That report
+is also a SQLRight false positive (a timeout in one run only).
+
+Issue: a variant of https://github.com/tursodatabase/turso/issues/9615.
+Comment:
+https://github.com/tursodatabase/turso/issues/9615#issuecomment-6649784267.
+
+## 20. A partial index on `oid` makes every insert fail
+
+```sql
+CREATE TABLE t (a serial, b text);
+CREATE INDEX ti ON t (b) WHERE oid = 1;   -- tursopg: accepted
+INSERT INTO t (b) VALUES ('x');           -- tursopg: ERROR:  no such column: oid
+```
+
+Expected PostgreSQL behavior: `CREATE INDEX` fails with
+`column "oid" does not exist`.
+
+Found by: the INDEX oracle, campaign of 2026-11-05
+(`bug_INDEX_b7f64e48f26695ac`).
+
+Issue: a variant of https://github.com/tursodatabase/turso/issues/9663
+(the same problem with `rowid`). Comment:
+https://github.com/tursodatabase/turso/issues/9663#issuecomment-6649784812.
 
 ## Campaign log
 
