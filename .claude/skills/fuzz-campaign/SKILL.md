@@ -185,7 +185,16 @@ tursodatabase/turso, opened as soon as the reproducer is minimal.
      existing issue, not as a new issue.
    - End the body with the attribution footer your environment requires.
    - Never put an AI model name in an issue or a comment.
-3. Append one line per issue or comment to `work/issues-filed.log`:
+3. Make sure that the footer is the last line of each post:
+   - Read each new issue back with `issue_read` (method `get`). On
+     2026-11-05, `issue_write` (method `create`) removed the footer from
+     the body of a new issue.
+   - If the footer is not the last line of the body, add it with
+     `issue_write` (method `update`). Send the complete body.
+   - Read each new comment back with `issue_read` (method
+     `get_comments`). A comment kept its footer, but make sure that it
+     is there.
+4. Append one line per issue or comment to `work/issues-filed.log`:
    `<UTC time> <URL> <title>`. A watcher can relay that file.
 
 ## 6. Rules
