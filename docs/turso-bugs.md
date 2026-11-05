@@ -114,7 +114,9 @@ A `timestamp` column with a plain index does the same: after
 `INSERT INTO t VALUES (2)`, `c = 2` is false as an expression, and
 `WHERE c = 2` finds the row through the index (campaign of 2026-11-05,
 NoREC, `bug_NOREC_3f1369eafa254aac` and `bug_NOREC_4187b2e5c1a1ccee`).
-A `timestamp UNIQUE` column does the same (`bug_NOREC_148a396fab798a8d`).
+A `timestamp UNIQUE` column does the same (`bug_NOREC_148a396fab798a8d`),
+and so does a `timestamptz PRIMARY KEY` column with `WHERE c1 = 1`
+(`bug_NOREC_8c2f904b5bddc8c2`, 11:04 UTC).
 A `timetz` column with an index does the same with a text literal: after
 `INSERT INTO t VALUES ('-10e-400')` (stored as `12:00:00`),
 `WHERE c = '-10e-400'` counts 0 rows in a scan and 1 row through the
@@ -296,7 +298,7 @@ DO UPDATE). Found again on 2026-11-05 (`bug_INDEX_7bdd7c2ec31c66e2`,
 10:32 UTC: `bug_INDEX_0ca621c3060c9971` (its full test case also hits
 the harness timeout; the fixed build gives ERROR),
 `bug_INDEX_3667624ba05fd815`, `bug_INDEX_39da718980ce4a7b` and
-`bug_INDEX_f9f9bd32753072b6`.
+`bug_INDEX_f9f9bd32753072b6`. Batch of 11:08 UTC: `bug_INDEX_27033558ab1b9507`.
 
 A flood: from 05:20 to 05:22 UTC the INDEX instance wrote 150 reports
 in 2 minutes. All 150 hold `ON CONFLICT DO UPDATE SET fruit = ...`. They
@@ -337,7 +339,9 @@ with other literals that are converted only at insert time:
 column), `bug_INDEX_c4b2d91033a5c23f` (`v0.c1 / '{"a":true,...}'`) and
 `bug_INDEX_59bb27fce00a48ac` (`'08:00:2b:ff:fe:01:02:03'::jsonb ->> c2`,
 `malformed JSON` at insert). PostgreSQL converts these literals when it
-makes the index, so `CREATE INDEX` fails there.
+makes the index, so `CREATE INDEX` fails there. Batch of 11:08 UTC:
+`bug_INDEX_0f51459077f1ecc4` (`'dump_nulls'`) and
+`bug_INDEX_6bceb1168055528b` (`'{"a":[1,2],"c":"b"}'`).
 
 ## 10. A very large numeric scale makes an insert run for minutes
 
@@ -640,7 +644,15 @@ and `bug_INDEX_e939a8e6cc18eea1`. Batch of 09:28 UTC:
 `bug_INDEX_454ff5026133fea9`, `bug_INDEX_62e9c18d4a12350a`,
 `bug_INDEX_65ed21361e4edff0`, `bug_INDEX_6bb42074f5a7eb48`,
 `bug_INDEX_6ffc24dcaaafed98`, `bug_INDEX_93f3ad7122e06ba0`,
-`bug_INDEX_d62395f6fe0fc7d1` and `bug_INDEX_dd531838fa002dad`.
+`bug_INDEX_d62395f6fe0fc7d1` and `bug_INDEX_dd531838fa002dad`. Batch of
+11:08 UTC (13 reports, also `real[]` and `c2::time`, which PostgreSQL
+rejects as not IMMUTABLE): `bug_INDEX_23b876800dbb1b7a`,
+`bug_INDEX_61ed4cffb6480fe3`, `bug_INDEX_789190e79e3449a0`,
+`bug_INDEX_a50a0242df0ca3e4`, `bug_INDEX_ab90ac6fcc63782f`,
+`bug_INDEX_b404f646e965727f`, `bug_INDEX_b6a4172b7cba01ae`,
+`bug_INDEX_d961ea556edfcf0f`, `bug_INDEX_dece4ac06f367ad5`,
+`bug_INDEX_e0a840ab74017cdf` (`time`), `bug_INDEX_e62eccc5582950e4`,
+`bug_INDEX_f44d477ec6e2e065` and `bug_INDEX_fc89e6bef329db38`.
 
 ## 17. Crash: a multi-row VALUES list with rows of different lengths
 
@@ -725,6 +737,16 @@ Reports of 08:26 UTC: `bug_INDEX_191daab77c2e66c3` (a partial index
 `WHERE v0.c2 / '{2,180,...}'`), `bug_INDEX_91a23ac6a5e82aa9` and
 `bug_INDEX_b622ad2cf7311d1c` (`1 / c1`).
 
+Batch of 11:08 UTC: `bug_INDEX_1549b3e94da32994` (`division by zero`).
+A burst of 28 reports from 10:52 to 10:57 UTC came from one queue entry.
+Each has a partial index `WHERE v0.c2 = 'dump_nulls' AND lcm(c1, - c2)`.
+tursopg accepts the unary `-` on a `text` column (`- 'abc'::text` gives
+`0`), and `lcm` then overflows at insert (`integer overflow`).
+PostgreSQL gives `operator does not exist: - text`. Examples:
+`bug_INDEX_0082843f0bdad20d`, `bug_INDEX_13a7ae2747b423df`,
+`bug_INDEX_9d7c8a9ec94c4ac2`, `bug_INDEX_ff5a7cf69c4a9a2c`. Comment:
+https://github.com/tursodatabase/turso/issues/11387#issuecomment-6656461559.
+
 Issue: a variant of https://github.com/tursodatabase/turso/issues/11387.
 Comment:
 https://github.com/tursodatabase/turso/issues/11387#issuecomment-6649577460.
@@ -775,7 +797,13 @@ Found by: the INDEX oracle, campaign of 2026-11-05
 `bug_INDEX_c3b093f37a41c17f`. Later: `bug_INDEX_942f1a02d8543551`
 (`WHERE oid = 'cr_owner'`), `bug_INDEX_0bee8ad86590ab36` and
 `bug_INDEX_29c3ca95a502cf8e`. Batch of 10:32 UTC:
-`bug_INDEX_6485a2dad42b35fb` (`oid = '17.35177750493897715514'`).
+`bug_INDEX_6485a2dad42b35fb` (`oid = '17.35177750493897715514'`). Batch of
+11:08 UTC (10 reports): `bug_INDEX_022197452292a1ee`,
+`bug_INDEX_1001f725b9f856ff`, `bug_INDEX_1ee85b99d583b41c`,
+`bug_INDEX_3e42493a5f64bd22`, `bug_INDEX_4d082225c01e7dc5`,
+`bug_INDEX_4e554e0eb8a6579c`, `bug_INDEX_52083cf69d0e8f91`,
+`bug_INDEX_68d37717614561a2`, `bug_INDEX_6d462f2a669cfb58` and
+`bug_INDEX_ba74ac6e5889dfdc`.
 
 Issue: a variant of https://github.com/tursodatabase/turso/issues/9663
 (the same problem with `rowid`). Comment:
@@ -924,6 +952,28 @@ Found by: the INDEX oracle, campaign of 2026-11-05
 
 Issue: https://github.com/tursodatabase/turso/issues/11453.
 
+## 25. A cast from float8 to int8 has no range check
+
+```sql
+SELECT '9223372036854775807'::float8::int8;   -- tursopg: 9223372036854775807
+SELECT 3e9::float8::int4;                     -- tursopg: 3000000000
+```
+
+Expected PostgreSQL behavior: `bigint out of range` and
+`integer out of range` (PostgreSQL 16.15).
+
+Found by: the INDEX oracle, campaign of 2026-11-05
+(`bug_INDEX_f2846adf2d7c68d5`). The test case inserts the cast value
+into a `serial PRIMARY KEY` column, so the row gets the largest rowid.
+The next `serial` value is then a random rowid, as in SQLite. Thus, the
+two runs differ without an index effect. That part is a SQLRight
+false positive (a non-deterministic rowid).
+
+Issue: a variant of https://github.com/tursodatabase/turso/issues/8337
+(the cast side of the int4 range check; #10442 is the column side).
+Comment:
+https://github.com/tursodatabase/turso/issues/8337#issuecomment-6656463096.
+
 ## Campaign log
 
 tursopg at submodule commit ff97c22, 4 cores, one `afl-fuzz` instance per
@@ -952,8 +1002,8 @@ result markers itself and the seeds without transaction statements.
 ### Campaign of 2026-11-05 (12 hours, in progress)
 
 Three instances (NoREC, TLP, INDEX) on tursopg at submodule commit ff97c22.
-The final numbers go here when the campaign ends. SQLRight found four
-false-positive classes in the first 6.5 hours. Each one is fixed at its
+The final numbers go here when the campaign ends. SQLRight found five
+false-positive classes in the first 8 hours. Each one is fixed at its
 source and has a unit test (the fourth one has a test of its helper only).
 The running instances use the old library, so they can still write these
 reports.
@@ -963,4 +1013,5 @@ reports.
 | a query holds the literal `'BEGIN VERI 1'`, and the error message repeats it | NoREC | 1 | the result extraction takes a marker only as a whole line |
 | a statement hits the 2-second limit of the harness in one run only | INDEX | 1 | a Fail with `ERROR:  interrupt` in the output becomes Error |
 | `max(a, b)` with two arguments taken for an aggregate | INDEX | 6 | `ir_wrapper::is_scalar_min_max` (also used by TLP) |
+| a row gets the largest rowid, and the next `serial` value is random | INDEX | 1 (`bug_INDEX_f2846adf2d7c68d5`) | `is_non_deterministic` takes the literal `9223372036854775807` as non-deterministic |
 | a query returns the row `END VERI 1`, which looks like a marker (`SELECT 'END VERI 1' FROM t`), or a stray marker statement sits among the normal statements | TLP | 3 (`bug_TLP_c5b14ce82655389a` at 10:33 UTC turns from FAIL to ERROR when the marker literals are renamed) | the mutator does not learn or reuse marker literals, and it does not add marker statements to the library (`is_marker_text` and `is_marker_statement` in `fix.rs`) |

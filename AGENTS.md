@@ -232,6 +232,9 @@ purpose:
   statements of other test cases. A query such as `SELECT 'END VERI 1' FROM t`
   makes the harness print a data row that is a whole line and looks like a
   marker. A stray marker statement shifts the result blocks.
+- A test case with the literal `9223372036854775807` is not checked. After a
+  row gets the largest rowid, tursopg picks a random rowid for the next row
+  (as SQLite does), so a `serial` key has a different value in each run.
 - A verdict of Fail becomes Error when the output has the line
   `ERROR:  interrupt`. That is a statement that hit the 2-second limit of
   the harness. It stops at a point that depends on timing, so the INDEX

@@ -32,9 +32,12 @@ use sqlright_pg_parser::parse_query;
 
 use crate::config::Config;
 
-/// Functions whose results change between runs. A test case that names one
-/// is not checked (the C++ only filtered `random`).
+/// Functions whose results change between runs, and the largest 64-bit
+/// integer. A test case that names one is not checked (the C++ only filtered
+/// `random`). After a row gets the largest rowid, the next rowid is random (as
+/// in SQLite), so a `serial` key gets a different value in each run.
 const NON_DETERMINISTIC: &[&str] = &[
+    "9223372036854775807",
     "random",
     "now(",
     "current_timestamp",
@@ -530,6 +533,15 @@ pub fn has_statement_timeout(output: &str) -> bool {
 #[cfg(test)]
 mod tests {
     use super::*;
+
+    #[test]
+    fn the_largest_rowid_makes_a_test_case_non_deterministic() {
+        assert!(is_non_deterministic(
+            "INSERT INTO v0 (c1) SELECT '9223372036854775807'::float8::int8;"
+        ));
+        assert!(is_non_deterministic("SELECT random();"));
+        assert!(!is_non_deterministic("INSERT INTO v0 VALUES (9223372036854775);"));
+    }
 
     #[test]
     fn finds_a_statement_timeout() {
