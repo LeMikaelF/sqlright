@@ -147,6 +147,19 @@ a grouped SELECT only when its target is one of the GROUP BY expressions.
 Issue: https://github.com/tursodatabase/turso/issues/11387 (with findings 2 and 3).
 Related: https://github.com/tursodatabase/turso/issues/5709 asks for an option that enforces this.
 
+A related gap (second 12-hour campaign, TLP, comment on #11387):
+`sum` and `avg` accept a `text` value and convert it to a double.
+PostgreSQL gives `function sum(text) does not exist`. Because the sum is
+a double, rows with text numbers near 1e33 and 6e37 of opposite signs
+gave `855948866655589.0` for the whole table and `0.0` for the sum of
+the TLP partitions.
+
+```sql
+CREATE TABLE t (c text);
+INSERT INTO t VALUES ('1.5'), ('abc'), ('2e300');
+SELECT sum(c), avg(c) FROM t;   -- tursopg: 2.0e+300 6.66666666666667e+299
+```
+
 ## 6. avg() over integers returns double precision
 
 PostgreSQL computes `avg` over `integer` or `bigint` as `numeric`, so the
