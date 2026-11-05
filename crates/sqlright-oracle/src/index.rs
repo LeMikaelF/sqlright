@@ -271,6 +271,17 @@ impl Oracle for Index {
             all.final_res = Some(OraCompRes::Error);
             return;
         }
+        // The harness stops a statement after a time limit. A table with
+        // indexes is slower to write, so the limit can stop a statement in
+        // one run only, and the runs then hold different data.
+        if all
+            .v_res_str
+            .iter()
+            .any(|out| out.lines().any(|l| l.trim_end() == "ERROR:  interrupt"))
+        {
+            all.final_res = Some(OraCompRes::Error);
+            return;
+        }
         all.final_res = Some(OraCompRes::Pass);
         let types = Self::get_v_valid_type(&all.v_cmd_str[0]);
         let mut is_all_err = true;
@@ -389,6 +400,23 @@ mod tests {
         });
         Index.compare_results(&mut all);
         assert_eq!(all.final_res, Some(OraCompRes::Pass));
+    }
+
+    #[test]
+    fn does_not_compare_runs_after_an_interrupted_statement() {
+        let cmd = "SELECT 'BEGIN VERI 0'; SELECT * FROM v0; SELECT 'END VERI 0';";
+        let mut all = AllCompRes::default();
+        all.v_cmd_str.push(cmd.into());
+        all.v_res_str
+            .push("ERROR:  interrupt\nBEGIN VERI 0 \n1 \nEND VERI 0 \n".into());
+        all.v_res_str
+            .push("BEGIN VERI 0 \n1 \n2 \nEND VERI 0 \n".into());
+        all.v_res.push(CompRes {
+            v_res_str: vec!["1 \n".into(), "1 \n2 \n".into()],
+            ..CompRes::default()
+        });
+        Index.compare_results(&mut all);
+        assert_eq!(all.final_res, Some(OraCompRes::Error));
     }
 
     #[test]
