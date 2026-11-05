@@ -473,11 +473,22 @@ A `FLOAT8` or `TEXT` column does not show the problem, and
 Expected PostgreSQL behavior: the untyped literal takes the type of the
 other operand, so every query returns both rows.
 
+The same happens with other column types and literals. A `polygon`
+column compared with the integer `0` is true for a polygon row
+(PostgreSQL has no such operator), and the wrapped column is false:
+
+```sql
+CREATE TABLE v0 (c1 int4, c3 polygon);
+INSERT INTO v0 VALUES (1, '(3.0,1.0),(4.0,2.0)'::polygon);
+SELECT count(*) FROM v0 WHERE c3 = 0;                            -- 1
+SELECT count(*) FROM v0 WHERE (CASE WHEN TRUE THEN c3 END) = 0;  -- 0
+```
+
 Found by: the EET oracle, in the first minutes of the 12-hour campaign
-of 2026-11-05 (every report that wrapped a column of a comparison with a
-string literal in `CASE WHEN ... END`). The EET oracle now leaves such
-operands alone, with a comment that names the issue, so that the campaign
-can find other problems.
+of 2026-11-05 (every report that wrapped an operand of a comparison in
+`CASE WHEN ... END`). The EET oracle now leaves every operand of a
+comparison alone, with a comment that names the issue, so that the
+campaign can find other problems.
 
 Issue: https://github.com/tursodatabase/turso/issues/11415
 

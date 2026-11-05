@@ -322,7 +322,7 @@ flood that is a real database bug gets one entry in `docs/turso-bugs.md`
 with a minimal reproducer and an issue. When the bug would hide every
 other finding of an oracle, the oracle skips the form that shows it, with
 a comment that names the issue: EET does not wrap an operand of a
-comparison with a string literal (finding 17).
+comparison (finding 17).
 
 ## Rules for changes
 
