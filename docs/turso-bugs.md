@@ -223,6 +223,17 @@ target, the error is `ON CONFLICT DO UPDATE requires inference
 specification or constraint name`. With a target, an unknown column
 gives `column "nosuch" of relation "t" does not exist`.
 
+SQLite 3.53.1 inserts the row when the index is not unique, and fails
+only with a unique index. A non-unique index cannot cause a conflict, so
+SQLite does not compile the DO UPDATE branch. Issue #10393 (fixed by
+#10639, included in ff97c22) made turso compile the branch only when a
+constraint check can jump to it. But `build_constraints_to_check` in
+`core/translate/insert.rs` adds every index, also the non-unique ones.
+The INDEX campaign of 2026-11-05 found the same difference again after
+3 minutes.
+
+Issue: https://github.com/tursodatabase/turso/issues/11407
+
 Found by: the INDEX oracle, 12-hour campaign (the row counts of the run
 with indexes and the run without indexes were different).
 
