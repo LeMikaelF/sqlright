@@ -1,13 +1,18 @@
 # turso bugs found with SQLRight
 
 Findings from running the SQLRight rewrite against tursopg (the PostgreSQL
-frontend of turso). The turso version is the submodule commit in this
-repository. Each entry has a minimal SQL reproducer. Run a reproducer with:
+frontend of turso). Findings 1 to 25 were found at turso commit ff97c22.
+Each entry has a minimal SQL reproducer. Run a reproducer with:
 
 ```bash
 printf '<sql>' > repro.sql
 crates/sqlright-harness-tursopg/target/release/sqlright-harness-tursopg --replay repro.sql
 ```
+
+The submodule now points to turso commit 754b41e (2026-11-05). At that
+commit, the first reproducers of findings 8, 12, 16, 18, 22 and 23 no
+longer show the problem. The first reproducers of the other findings
+still do.
 
 SQLRight does not fix turso bugs. Issues were opened on 2026-11-04 for the
 findings that no existing issue covered: #11385 (finding 1), #11386
