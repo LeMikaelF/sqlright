@@ -4,7 +4,7 @@
 # usage: launch.sh <name> <seconds> <ORACLE>...
 #   name     prefix of the output directories: work/<name>-<oracle>
 #   seconds  run time of each instance (43200 is 12 hours)
-#   ORACLE   NOREC, TLP or INDEX (one instance each)
+#   ORACLE   NOREC, TLP, INDEX, EET, DQE or LATERAL (one instance each)
 #
 # The instances survive the end of the shell that started them.
 set -euo pipefail

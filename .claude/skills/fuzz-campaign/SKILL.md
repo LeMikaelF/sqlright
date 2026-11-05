@@ -40,16 +40,24 @@ Run `scripts/setup.sh` from the repository root, or do its steps by hand:
 
 ## 2. Start the campaign
 
-Start one afl-fuzz instance per oracle (NOREC, TLP, INDEX) on the 4 cores.
+There are six oracles: NOREC, TLP, INDEX (from SQLRight) and EET, DQE,
+LATERAL (from SQLancer). The oracle table in `AGENTS.md` says what each
+one compares. Start one afl-fuzz instance per oracle, three at a time on
+the 4 cores, and keep one core for replays and triage. Pick the three
+oracles that ran the least against the turso commit of the submodule
+(`docs/turso-bugs.md` has the campaign log). When all six must run in
+one campaign, start three for the first half of the time and the other
+three for the second half.
+
 The sandbox tool kills a background command after 2 hours, so start each
 instance detached from the shell. `scripts/launch.sh` does this:
 
 ```bash
-.claude/skills/fuzz-campaign/scripts/launch.sh camp 43200 NOREC TLP INDEX
+.claude/skills/fuzz-campaign/scripts/launch.sh camp 43200 EET DQE LATERAL
 ```
 
-The first argument names the output directories (`work/camp-norec`,
-`work/camp-tlp`, `work/camp-index`), the second is the run time in
+The first argument names the output directories (`work/camp-eet`,
+`work/camp-dqe`, `work/camp-lateral`), the second is the run time in
 seconds (43200 is 12 hours). The script passes `--mem-mb 4096` when
 `sqlright run` has that option. Then check that three processes run:
 
@@ -97,7 +105,10 @@ H=$PWD/crates/sqlright-harness-tursopg/target/release/sqlright-harness-tursopg
    `(ulimit -v 4000000; python3 -I scripts/group_failures.py "work/camp-norec/bugs/*.sql" 100)`
 2. Replay one: `(ulimit -v 4000000; timeout 60 target/release/sqlright replay case.sql --oracle NOREC --harness $H --raw)`
 3. Minimize: `(ulimit -v 4000000; timeout 600 target/release/sqlright minimize case.sql --oracle NOREC --harness $H --out work/min/case.sql)`.
-   Then reduce by hand to a few statements.
+   Then reduce by hand to a few statements. The forms of one oracle
+   SELECT are the result blocks `BEGIN VERI 0`, `BEGIN VERI 1` (and
+   `BEGIN VERI 2` for DQE) that follow each other; the minimizer keeps
+   them together.
 4. Classify:
    - A turso logic bug: the same data gives different answers in two
      forms that must agree (an index lookup against an expression, a
@@ -108,10 +119,26 @@ H=$PWD/crates/sqlright-harness-tursopg/target/release/sqlright-harness-tursopg
      briefly, with the PostgreSQL error.
    - A SQLRight false positive: the oracle assumed something that does
      not hold. See "When a campaign reports hundreds of failures" in
-     `AGENTS.md`. Fix the oracle in `crates/sqlright-oracle`, add a unit
-     test, run `cargo test --release` and `cargo clippy --release
-     --workspace --all-targets`. A rebuilt `libsqlright_afl.so` takes
-     effect only in a restarted instance.
+     `AGENTS.md`. Known classes per oracle:
+     - EET: a CASE around a value changes how tursopg prints or compares
+       the value (a type that the CASE loses); a predicate `p` that is
+       not a boolean in PostgreSQL. Both are tursopg problems if the two
+       forms are valid PostgreSQL; decide with the PostgreSQL semantics.
+     - DQE: a trigger, a foreign key with `ON DELETE`, or a statement
+       between the forms that changes the table. The three forms must
+       run on the same rows.
+     - LATERAL: a selected column whose values do not survive the JSON
+       round trip (see `survives_json` in `lateral.rs`), a comparison of
+       two types that convert differently in the two forms, or a
+       subquery whose rows depend on the plan (DISTINCT or LIMIT without
+       an ORDER BY on every column).
+     Fix the oracle in `crates/sqlright-oracle`, add a unit test, run
+     `cargo fmt`, `cargo test --release` and `cargo clippy --release
+     --workspace --all-targets`. Commit the fix on a branch, open a pull
+     request on LeMikaelF/sqlright with the GitHub MCP tool
+     `create_pull_request`, and merge it with `merge_pull_request`
+     (method `squash`) as soon as the checks pass. A rebuilt
+     `libsqlright_afl.so` takes effect only in a restarted instance.
    - A crash: reproduce under the limits, find the statement by bisecting
      prefixes of the file, record the panic message and location.
    - A hang: find the slow statement with `timeout 30` and record the
@@ -163,3 +190,5 @@ tursodatabase/turso, opened as soon as the reproducer is minimal.
 - Never force-push, never rewrite history.
 - Instability warnings from AFL++ are normal: tursopg's coverage changes
   a little with hash map order.
+- A DQE test case changes its tables (the DELETE forms). Replay it as a
+  whole; a statement taken out of it runs on other rows.
