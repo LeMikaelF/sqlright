@@ -25,6 +25,7 @@ use turso_pg::Connection;
 const RUN_MARKER: &str = "-- SQLRIGHT RUN";
 
 /// Statements that take longer than this are stopped and reported as errors.
+/// The variable `SQLRIGHT_STMT_TIMEOUT_MS` replaces this value.
 const STATEMENT_TIMEOUT: Duration = Duration::from_secs(2);
 
 /// The first output line: this marker and the FNV-1a hash of the input.
@@ -135,7 +136,7 @@ fn run_one(conn: &Connection, sql: &str, out: &mut Vec<u8>) {
     }
     match conn.query(sql) {
         Ok(Some(mut stmt)) => {
-            stmt.set_query_timeout_override(Some(Some(STATEMENT_TIMEOUT)));
+            stmt.set_query_timeout_override(Some(Some(statement_timeout())));
             let num_columns = stmt.num_columns();
             let result = stmt.run_with_row_callback(|row| {
                 if num_columns > 0 {
@@ -155,6 +156,21 @@ fn run_one(conn: &Connection, sql: &str, out: &mut Vec<u8>) {
         Ok(None) => {}
         Err(e) => write_error(out, &e),
     }
+}
+
+/// The time limit of one statement. A multi-run test case runs many
+/// statements, so a slow statement makes the whole case slow. The variable
+/// `SQLRIGHT_STMT_TIMEOUT_MS` sets a lower limit for such a campaign.
+fn statement_timeout() -> Duration {
+    static TIMEOUT: std::sync::OnceLock<Duration> = std::sync::OnceLock::new();
+    *TIMEOUT.get_or_init(|| {
+        std::env::var("SQLRIGHT_STMT_TIMEOUT_MS")
+            .ok()
+            .and_then(|v| v.parse::<u64>().ok())
+            .filter(|ms| *ms > 0)
+            .map(Duration::from_millis)
+            .unwrap_or(STATEMENT_TIMEOUT)
+    })
 }
 
 /// `BEGIN VERI n` or `END VERI n` when the statement is `SELECT '<that>'`.
