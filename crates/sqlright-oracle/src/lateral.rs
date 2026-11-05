@@ -241,6 +241,9 @@ fn column_of(name: &str, typename: &str) -> Column {
 fn tables_of(ctx: &FixContext) -> Vec<Table> {
     let mut tables = Vec::new();
     for name in &ctx.v_table_names {
+        if ctx.v_table_without_column_types.contains(name) {
+            continue;
+        }
         let Some(cols) = ctx.m_tables.get(name) else {
             continue;
         };
@@ -856,6 +859,21 @@ mod tests {
             .iter()
             .map(|f| f.to_string(f.root.unwrap()))
             .collect()
+    }
+
+    #[test]
+    fn a_table_made_from_a_select_is_not_used() {
+        let mut m = mutator_with_tables(1);
+        let names = |m: &Mutator| {
+            tables_of(&m.ctx)
+                .iter()
+                .map(|t| t.name.clone())
+                .collect::<Vec<_>>()
+        };
+        assert!(names(&m).contains(&"v1".to_string()));
+        m.ctx.v_table_without_column_types.push("v1".to_string());
+        assert!(!names(&m).contains(&"v1".to_string()));
+        assert!(names(&m).contains(&"v0".to_string()));
     }
 
     #[test]

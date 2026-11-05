@@ -49,6 +49,10 @@ pub struct FixContext {
     pub v_create_foreign_table_names_single: Vec<String>,
     /// Tables created with `PARTITION BY`.
     pub v_table_with_partition_name: Vec<String>,
+    /// Tables made by `CREATE TABLE ... AS SELECT` or `SELECT ... INTO`.
+    /// tursopg gives their columns no type, so the types of the source
+    /// columns are not the types of these columns.
+    pub v_table_without_column_types: Vec<String>,
     pub v_int_literals: Vec<i64>,
     pub v_float_literals: Vec<f64>,
     pub v_string_literals: Vec<String>,
@@ -959,6 +963,14 @@ impl Mutator {
 
         // The tables this statement created are now visible to the next ones.
         let created = self.ctx.v_create_table_names_single.clone();
+        let makes_table_from_select =
+            !ir_wrapper::get_ir_node_in_stmt_with_type(t, stmt, IrType::CreateAsStmt, false)
+                .is_empty();
+        if makes_table_from_select {
+            self.ctx
+                .v_table_without_column_types
+                .extend(created.iter().cloned());
+        }
         self.ctx.v_table_names.extend(created);
         let created_foreign = self.ctx.v_create_foreign_table_names_single.clone();
         self.ctx.v_foreign_table_name.extend(created_foreign);
@@ -1266,6 +1278,21 @@ mod tests {
         let (marked, unmarked) = Mutator::ir_to_string(&runs[0]);
         assert!(marked.contains("SELECT 'BEGIN VERI 0'"));
         assert!(!unmarked.contains("VERI"));
+    }
+
+    #[test]
+    fn a_table_made_from_a_select_is_marked_as_without_column_types() {
+        let mut m = Mutator::new(1);
+        let sql = "CREATE TABLE t (a INT); CREATE TABLE u AS SELECT * FROM t;";
+        let mut q = parse_query(sql).unwrap();
+        let oracle = AnySelect;
+        m.pre_validate();
+        let (mut trees, _types) = m.pre_fix_transform(&oracle, &mut q.tree, q.root);
+        for tree in trees.iter_mut() {
+            let r = tree.root.unwrap();
+            m.validate(tree, r);
+        }
+        assert_eq!(m.ctx.v_table_without_column_types.len(), 1);
     }
 
     use crate::mutator::StmtType;
